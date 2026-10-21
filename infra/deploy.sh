@@ -39,6 +39,8 @@ if [ -z "${INVITE_CODE:-}" ]; then
   read -r -p "Starting invite code for friends (you can change it later in the app): " INVITE_CODE
 fi
 printf 'OWNER_EMAIL=%q\nINVITE_CODE=%q\n' "$OWNER_EMAIL" "$INVITE_CODE" >"$SETTINGS"
+# Every CDK step loads the app (bootstrap included), so hand these over as environment variables.
+export SPRAYWALL_OWNER_EMAIL="$OWNER_EMAIL" SPRAYWALL_INVITE_CODE="$INVITE_CODE"
 
 cd "$ROOT/infra"
 echo "Installing deploy tools…"
@@ -50,7 +52,6 @@ npx cdk bootstrap "aws://$ACCOUNT/$REGION" --profile "$PROFILE"
 
 echo "Deploying…"
 npx cdk deploy SprayWall --profile "$PROFILE" \
-  -c ownerEmail="$OWNER_EMAIL" -c inviteCode="$INVITE_CODE" \
   --outputs-file "$ROOT/infra/outputs.json"
 
 # The app reads its server addresses from src/aws-config.json (IDs and URLs only, no secrets).
