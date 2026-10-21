@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { RangeSlider } from '../components/RangeSlider';
 import { ClimbRow, PageHeader, SignInPrompt } from '../components/ui';
 import { db } from '../db';
 import { removeVersion, removeWall as removeWallEverywhere, saveWall } from '../lib/mutations';
@@ -11,29 +12,34 @@ import { gradeIndex, setClimbQueue, useCatalog, useStoredState } from '../lib/ho
 import type { Climb } from '../types';
 
 interface Filters {
-  version: 'current' | 'all';
   search: string;
   gradeSystemId: string;
   minGrade: string;
   maxGrade: string;
   footRuleId: string;
   tagIds: string[];
-  noMatching: 'any' | 'yes' | 'no';
   benchmarksOnly: boolean;
   ticked: 'any' | 'yes' | 'no';
   setter: string;
   sort: 'grade' | 'newest' | 'oldest' | 'name' | 'rating' | 'popular';
 }
 
+const SORTS: { value: Filters['sort']; label: string; server?: boolean }[] = [
+  { value: 'grade', label: 'Grade' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'name', label: 'Name' },
+  { value: 'rating', label: 'Best rated', server: true },
+  { value: 'popular', label: 'Most ticked', server: true },
+];
+
 const DEFAULT_FILTERS: Filters = {
-  version: 'current',
   search: '',
   gradeSystemId: '',
   minGrade: '',
   maxGrade: '',
   footRuleId: '',
   tagIds: [],
-  noMatching: 'any',
   benchmarksOnly: false,
   ticked: 'any',
   setter: '',
@@ -55,17 +61,18 @@ export function WallPage() {
   const stats = useTickStats((id) => catalog?.gradeSystem(id));
 
   const current = versions?.[versions.length - 1];
-  const versionNumber = useMemo(() => new Map(versions?.map((v) => [v.id, v.number])), [versions]);
   const gradeSystemId = filters.gradeSystemId || catalog?.defaultGradeSystemId || '';
   const system = catalog?.gradeSystem(gradeSystemId);
+  const gradeLo = system && filters.minGrade ? Math.max(0, system.grades.indexOf(filters.minGrade)) : 0;
+  const gradeHi = system && filters.maxGrade && system.grades.includes(filters.maxGrade) ? system.grades.indexOf(filters.maxGrade) : (system?.grades.length ?? 1) - 1;
 
   const visible = useMemo(() => {
     if (!climbs || !catalog || !current) return [];
     const q = filters.search.trim().toLowerCase();
     const lo = filters.minGrade ? gradeIndex(system, filters.minGrade) : -1;
     const hi = filters.maxGrade ? gradeIndex(system, filters.maxGrade) : Infinity;
+    // Every climb on the wall shows, whichever photo it was set on (holds only get added, never moved).
     const out = climbs.filter((c) => {
-      if (filters.version === 'current' && c.versionId !== current.id) return false;
       if (q && !c.name.toLowerCase().includes(q) && !c.notes.toLowerCase().includes(q)) return false;
       if (filters.minGrade || filters.maxGrade) {
         if (c.gradeSystemId !== gradeSystemId) return false;
@@ -74,8 +81,6 @@ export function WallPage() {
       }
       if (filters.footRuleId && c.footRuleId !== filters.footRuleId) return false;
       if (filters.tagIds.length && !filters.tagIds.every((t) => c.tagIds.includes(t))) return false;
-      if (filters.noMatching === 'yes' && !c.noMatching) return false;
-      if (filters.noMatching === 'no' && c.noMatching) return false;
       if (filters.benchmarksOnly && !c.benchmark) return false;
       if (filters.setter && c.createdBy !== filters.setter) return false;
       if (filters.ticked !== 'any' && perms.signedIn && !!stats(c).mine !== (filters.ticked === 'yes')) return false;
@@ -102,7 +107,7 @@ export function WallPage() {
 
   const activeFilterCount =
     (filters.search ? 1 : 0) + (filters.minGrade || filters.maxGrade ? 1 : 0) + (filters.footRuleId ? 1 : 0) +
-    filters.tagIds.length + (filters.noMatching !== 'any' ? 1 : 0) + (filters.benchmarksOnly ? 1 : 0) +
+    filters.tagIds.length + (filters.benchmarksOnly ? 1 : 0) +
     (filters.setter ? 1 : 0) + (filters.ticked !== 'any' && perms.signedIn ? 1 : 0);
   const setters = [...new Map(climbs.filter((c) => c.createdBy).map((c) => [c.createdBy!, c.setterName || 'Someone'])).entries()];
 
@@ -148,6 +153,15 @@ export function WallPage() {
           <button type="button" className={`pill ${showFilters || activeFilterCount ? 'on' : ''}`} onClick={() => setShowFilters((s) => !s)}>
             <Icon name="filter" size={16} /> Filter{activeFilterCount ? ` · ${activeFilterCount}` : ''}
           </button>
+          <label className="pill pill-select">
+            <Icon name="sort" size={16} />
+            <span className="sr-only">Sort by</span>
+            <select value={filters.sort} onChange={(e) => set({ sort: e.target.value as Filters['sort'] })}>
+              {SORTS.filter((s) => !s.server || perms.server).map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </label>
           {current && perms.isOwner && (
             <Link className="pill" to={`/versions/${current.id}/holds`}>
               <Icon name="edit" size={16} /> Holds
@@ -206,64 +220,37 @@ export function WallPage() {
         {showFilters && (
           <section className="panel form filters">
             <input type="search" placeholder="Search names and notes" value={filters.search} onChange={(e) => set({ search: e.target.value })} />
-            <div className="row">
-              <label>
-                Photos
-                <select value={filters.version} onChange={(e) => set({ version: e.target.value as Filters['version'] })}>
-                  <option value="current">Current photo only</option>
-                  <option value="all">All photos</option>
-                </select>
-              </label>
-              <label>
-                Sort
-                <select value={filters.sort} onChange={(e) => set({ sort: e.target.value as Filters['sort'] })}>
-                  <option value="grade">Grade</option>
-                  <option value="newest">Newest</option>
-                  <option value="oldest">Oldest</option>
-                  <option value="name">Name</option>
-                  {perms.server && <option value="rating">Best rated</option>}
-                  {perms.server && <option value="popular">Most ticked</option>}
-                </select>
-              </label>
-            </div>
-            <div className="row">
-              {catalog.gradeSystems.length > 1 && (
-                <label>
-                  Grades
-                  <select value={gradeSystemId} onChange={(e) => set({ gradeSystemId: e.target.value, minGrade: '', maxGrade: '' })}>
-                    {catalog.gradeSystems.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                </label>
-              )}
-              <label>
-                From
-                <select value={filters.minGrade} onChange={(e) => set({ minGrade: e.target.value })}>
-                  <option value="">Any</option>
-                  {system?.grades.map((g) => <option key={g}>{g}</option>)}
-                </select>
-              </label>
-              <label>
-                To
-                <select value={filters.maxGrade} onChange={(e) => set({ maxGrade: e.target.value })}>
-                  <option value="">Any</option>
-                  {system?.grades.map((g) => <option key={g}>{g}</option>)}
-                </select>
-              </label>
-            </div>
+            {system && system.grades.length > 1 && (
+              <div className="grade-range">
+                <div className="grade-range-head">
+                  <span className="field-label">Grade</span>
+                  <span className="grade-range-value">
+                    {gradeLo === 0 && gradeHi === system.grades.length - 1
+                      ? 'Any grade'
+                      : `${system.grades[gradeLo]} – ${system.grades[gradeHi]}`}
+                  </span>
+                </div>
+                <RangeSlider
+                  labels={system.grades}
+                  lo={gradeLo}
+                  hi={gradeHi}
+                  ariaLabel="Grade"
+                  onChange={(lo, hi) =>
+                    set({
+                      // Handles at the ends mean "no limit", so new grades added later aren't excluded.
+                      minGrade: lo === 0 ? '' : system.grades[lo],
+                      maxGrade: hi === system.grades.length - 1 ? '' : system.grades[hi],
+                    })
+                  }
+                />
+              </div>
+            )}
             <div className="row">
               <label>
                 Feet
                 <select value={filters.footRuleId} onChange={(e) => set({ footRuleId: e.target.value })}>
                   <option value="">Any rule</option>
                   {catalog.footRules.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
-              </label>
-              <label>
-                Matching
-                <select value={filters.noMatching} onChange={(e) => set({ noMatching: e.target.value as Filters['noMatching'] })}>
-                  <option value="any">Any</option>
-                  <option value="no">Matching allowed</option>
-                  <option value="yes">No matching</option>
                 </select>
               </label>
             </div>
@@ -313,7 +300,7 @@ export function WallPage() {
               })}
             </div>
             {activeFilterCount > 0 && (
-              <button type="button" className="btn" onClick={() => setFilters({ ...DEFAULT_FILTERS, version: filters.version, sort: filters.sort })}>
+              <button type="button" className="btn" onClick={() => setFilters({ ...DEFAULT_FILTERS, sort: filters.sort })}>
                 Clear filters
               </button>
             )}
@@ -321,13 +308,10 @@ export function WallPage() {
         )}
 
         <p className="muted small list-count">
-          {visible.length} of {filters.version === 'current' ? climbs.filter((c) => c.versionId === current?.id).length : climbs.length} climbs
-          {filters.version === 'current' && climbs.some((c) => c.versionId !== current?.id) && (
-            <> · <button type="button" className="link-btn" onClick={() => set({ version: 'all' })}>show older photos</button></>
-          )}
+          {visible.length === climbs.length ? `${climbs.length} ${climbs.length === 1 ? 'climb' : 'climbs'}` : `${visible.length} of ${climbs.length} climbs`}
         </p>
         {visible.length === 0 && current && current.holds.length > 0 && (
-          <p className="empty">{activeFilterCount ? 'No climbs match these filters.' : 'No climbs on this photo yet. Tap “New climb” to set one.'}</p>
+          <p className="empty">{activeFilterCount ? 'No climbs match these filters.' : 'No climbs yet. Tap “New climb” to set one.'}</p>
         )}
         <ul className="climb-list">
           {visible.map((c) => (
@@ -336,7 +320,6 @@ export function WallPage() {
               climb={c}
               catalog={catalog}
               stats={perms.server ? stats(c) : undefined}
-              versionLabel={c.versionId !== current?.id ? `photo v${versionNumber.get(c.versionId)}` : undefined}
               onOpen={() => open(c)}
             />
           ))}
