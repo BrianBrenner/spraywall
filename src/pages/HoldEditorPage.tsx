@@ -288,6 +288,9 @@ function HoldEditor({ version }: { version: WallVersion }) {
     <div className="editor">
       <PageHeader title={`Holds · photo v${version.number}`} back={`/walls/${version.wallId}`}>
         <span className="muted small">{holds.length} holds</span>
+        <Link className="icon-btn" to={`/versions/${version.id}/heatmap`} aria-label="Heatmap" title="Heatmap: which holds climbs use">
+          <Icon name="heat" />
+        </Link>
         <Link className="btn primary" to={`/walls/${version.wallId}`}>Done</Link>
       </PageHeader>
       <WallCanvas

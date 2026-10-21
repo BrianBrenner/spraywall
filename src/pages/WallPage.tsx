@@ -105,8 +105,9 @@ export function WallPage() {
   if (!wall) return <div className="empty">Wall not found. <Link to="/">Back to walls</Link></div>;
   if (!catalog || !versions || !climbs) return null;
 
+  // The search bar sits outside the filter panel, so it doesn't count as a filter.
   const activeFilterCount =
-    (filters.search ? 1 : 0) + (filters.minGrade || filters.maxGrade ? 1 : 0) + (filters.footRuleId ? 1 : 0) +
+    (filters.minGrade || filters.maxGrade ? 1 : 0) + (filters.footRuleId ? 1 : 0) +
     filters.tagIds.length + (filters.benchmarksOnly ? 1 : 0) +
     (filters.setter ? 1 : 0) + (filters.ticked !== 'any' && perms.signedIn ? 1 : 0);
   const setters = [...new Map(climbs.filter((c) => c.createdBy).map((c) => [c.createdBy!, c.setterName || 'Someone'])).entries()];
@@ -149,6 +150,11 @@ export function WallPage() {
           </div>
         )}
 
+        <label className="search-bar">
+          <Icon name="search" size={18} />
+          <input type="search" placeholder="Search climbs" value={filters.search} onChange={(e) => set({ search: e.target.value })} aria-label="Search climbs" />
+        </label>
+
         <div className="wall-actions">
           <button type="button" className={`pill ${showFilters || activeFilterCount ? 'on' : ''}`} onClick={() => setShowFilters((s) => !s)}>
             <Icon name="filter" size={16} /> Filter{activeFilterCount ? ` · ${activeFilterCount}` : ''}
@@ -162,25 +168,29 @@ export function WallPage() {
               ))}
             </select>
           </label>
-          {current && perms.isOwner && (
-            <Link className="pill" to={`/versions/${current.id}/holds`}>
-              <Icon name="edit" size={16} /> Holds
-            </Link>
-          )}
-          {current && (
-            <Link className="pill" to={`/versions/${current.id}/heatmap`}>
-              <Icon name="heat" size={16} /> Heatmap
-            </Link>
-          )}
           {perms.isOwner && (
             <button type="button" className={`pill ${showPhotos ? 'on' : ''}`} onClick={() => setShowPhotos((s) => !s)}>
-              <Icon name="image" size={16} /> Photos · {versions.length}
+              <Icon name="settings" size={16} /> Wall setup
             </button>
           )}
         </div>
 
         {showPhotos && perms.isOwner && (
-          <section className="panel">
+          <section className="panel wall-setup">
+            {current && (
+              <div className="row-actions">
+                <Link className="btn primary" to={`/versions/${current.id}/holds`}>
+                  <Icon name="edit" size={18} /> Edit holds
+                </Link>
+                <Link className="btn" to={`/versions/${current.id}/heatmap`}>
+                  <Icon name="heat" size={18} /> Heatmap
+                </Link>
+                <Link className="btn" to={`/walls/${wall.id}/photo`}>
+                  <Icon name="image" size={18} /> Add new photo
+                </Link>
+              </div>
+            )}
+            <h3 className="panel-subtitle">Photos</h3>
             <ul className="version-list">
               {[...versions].reverse().map((v) => {
                 const n = climbs.filter((c) => c.versionId === v.id).length;
@@ -211,15 +221,24 @@ export function WallPage() {
               })}
             </ul>
             <div className="row-actions">
-              <Link className="btn primary" to={`/walls/${wall.id}/photo`}>Add new photo</Link>
-              <button type="button" className="btn danger" onClick={removeWall}>Delete wall</button>
+              <button type="button" className="btn ghost" onClick={rename}>Rename wall</button>
+              <button type="button" className="btn ghost danger" onClick={removeWall}>
+                <Icon name="trash" size={16} /> Delete wall
+              </button>
             </div>
           </section>
         )}
 
         {showFilters && (
           <section className="panel form filters">
-            <input type="search" placeholder="Search names and notes" value={filters.search} onChange={(e) => set({ search: e.target.value })} />
+            <div className="panel-head">
+              <h3 className="panel-subtitle">Filters</h3>
+              {activeFilterCount > 0 && (
+                <button type="button" className="link-btn" onClick={() => setFilters({ ...DEFAULT_FILTERS, search: filters.search, sort: filters.sort })}>
+                  Clear filters
+                </button>
+              )}
+            </div>
             {system && system.grades.length > 1 && (
               <div className="grade-range">
                 <div className="grade-range-head">
@@ -299,11 +318,6 @@ export function WallPage() {
                 );
               })}
             </div>
-            {activeFilterCount > 0 && (
-              <button type="button" className="btn" onClick={() => setFilters({ ...DEFAULT_FILTERS, sort: filters.sort })}>
-                Clear filters
-              </button>
-            )}
           </section>
         )}
 
@@ -311,7 +325,7 @@ export function WallPage() {
           {visible.length === climbs.length ? `${climbs.length} ${climbs.length === 1 ? 'climb' : 'climbs'}` : `${visible.length} of ${climbs.length} climbs`}
         </p>
         {visible.length === 0 && current && current.holds.length > 0 && (
-          <p className="empty">{activeFilterCount ? 'No climbs match these filters.' : 'No climbs yet. Tap “New climb” to set one.'}</p>
+          <p className="empty">{activeFilterCount || filters.search ? 'No climbs match.' : 'No climbs yet. Tap “New climb” to set one.'}</p>
         )}
         <ul className="climb-list">
           {visible.map((c) => (

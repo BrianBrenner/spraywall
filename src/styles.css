@@ -1002,6 +1002,47 @@ legend {
   flex: 1 1 140px;
 }
 
+.search-bar {
+  position: relative;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.search-bar .icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.search-bar input {
+  padding-left: 40px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border-color: transparent;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-subtitle {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.wall-setup .panel-subtitle {
+  margin: 18px 0 4px;
+}
+
 .pill-select {
   position: relative;
   padding-right: 10px;
