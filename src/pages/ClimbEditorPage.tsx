@@ -54,7 +54,14 @@ function ClimbEditor({ catalog, climb, version }: { catalog: Catalog; climb?: Cl
   const [notes, setNotes] = useState(climb?.notes ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const { isOwner } = usePermissions();
+  const { isOwner, session } = usePermissions();
+  const [setterName, setSetterName] = useState(climb?.setterName ?? session?.name ?? '');
+  // Suggest anyone who has set before (account or not), plus you.
+  const setterSuggestions = useLiveQuery(async () => {
+    const names = new Set((await db.climbs.toArray()).map((c) => c.setterName?.trim()).filter(Boolean) as string[]);
+    if (session?.name) names.add(session.name);
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [session?.name]);
 
   const roles = new Map(history.value.map((h) => [h.holdId, h.role]));
   const system = catalog.gradeSystem(gradeSystemId);
@@ -84,6 +91,7 @@ function ClimbEditor({ catalog, climb, version }: { catalog: Catalog; climb?: Cl
       benchmark,
       tagIds,
       notes: notes.trim(),
+      setterName: setterName.trim() || undefined,
       holds: history.value,
       createdAt: climb?.createdAt ?? now,
       updatedAt: now,
@@ -155,6 +163,13 @@ function ClimbEditor({ catalog, climb, version }: { catalog: Catalog; climb?: Cl
             Name
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Untitled" />
           </label>
+          <label>
+            Set by
+            <input list="setter-suggestions" value={setterName} onChange={(e) => setSetterName(e.target.value)} placeholder="Who set it" autoComplete="off" />
+            <datalist id="setter-suggestions">
+              {setterSuggestions?.map((n) => <option key={n} value={n} />)}
+            </datalist>
+          </label>
           <div className="row">
             <label>
               Grade
@@ -173,16 +188,19 @@ function ClimbEditor({ catalog, climb, version }: { catalog: Catalog; climb?: Cl
               </label>
             )}
           </div>
-          <label>
-            Feet
-            <select value={footRuleId} onChange={(e) => setFootRuleId(e.target.value)}>
-              {catalog.footRules.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={noMatching} onChange={(e) => setNoMatching(e.target.checked)} />
-            No matching
-          </label>
+          <fieldset className="rules-group">
+            <legend>Rules</legend>
+            <label>
+              Feet
+              <select value={footRuleId} onChange={(e) => setFootRuleId(e.target.value)}>
+                {catalog.footRules.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={noMatching} onChange={(e) => setNoMatching(e.target.checked)} />
+              No matching
+            </label>
+          </fieldset>
           {isOwner && (
             <label className="check">
               <input type="checkbox" checked={benchmark} onChange={(e) => setBenchmark(e.target.checked)} />

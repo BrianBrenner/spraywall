@@ -35,8 +35,32 @@ export function ClimbThumb({ climb }: { climb: Climb }) {
   );
 }
 
-export function ClimbMeta({ climb, catalog }: { climb: Climb; catalog: Catalog }) {
+/**
+ * Rules say how you're allowed to climb it, so they look loud (tags just describe it).
+ * Compact (cards): only a foot rule that differs from the default. Full (climbing
+ * view): the foot rule always, plus No matching.
+ */
+export function ClimbRules({ climb, catalog, full }: { climb: Climb; catalog: Catalog; full?: boolean }) {
   const rule = catalog.footRule(climb.footRuleId);
+  const showRule = rule && (full || climb.footRuleId !== catalog.defaultFootRuleId);
+  const items = [showRule && rule.name, full && climb.noMatching && 'No matching'].filter(Boolean) as string[];
+  if (!items.length) return null;
+  if (!full) return <>{items.map((t) => <span key={t} className="rule-chip">{t}</span>)}</>;
+  return (
+    <div className="rules-bar" aria-label="Rules">
+      {items.map((t, i) => (
+        <span key={t}>
+          {i > 0 && <span className="rules-sep">·</span>}
+          {t}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Benchmark star and descriptive tags. */
+export function ClimbMeta({ climb, catalog }: { climb: Climb; catalog: Catalog }) {
+  if (!climb.benchmark && !climb.tagIds.some((id) => catalog.tag(id))) return null;
   return (
     <div className="climb-meta">
       {climb.benchmark && (
@@ -44,8 +68,6 @@ export function ClimbMeta({ climb, catalog }: { climb: Climb; catalog: Catalog }
           <Icon name="star" size={12} fill="currentColor" /> Benchmark
         </span>
       )}
-      {rule && <span className="badge">{rule.name}</span>}
-      {climb.noMatching && <span className="badge warn">No matching</span>}
       {climb.tagIds.map((id) => {
         const tag = catalog.tag(id);
         return tag ? <span key={id} className="badge outline">{tag.name}</span> : null;
@@ -86,6 +108,7 @@ export function ClimbRow({ climb, catalog, stats, versionLabel, onOpen, children
           <div className="climb-row-title">
             <span className="climb-name">{climb.name || 'Untitled'}</span>
             <GradeChip grade={climb.grade} />
+            <ClimbRules climb={climb} catalog={catalog} />
           </div>
           <ClimbMeta climb={climb} catalog={catalog} />
           <TickSummary climb={climb} stats={stats} />

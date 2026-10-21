@@ -61,6 +61,15 @@ describe('access', () => {
     expect((await call('PUT', '/walls/w2', fake, { name: 'x' })).status).toBe(403);
   });
 
+  it('credits whoever the setter names, while editing stays with who logged it', async () => {
+    const res = await call('PUT', '/climbs/c1', ALEX, climb({ setterName: '  Jordan ' }));
+    expect(res.body).toMatchObject({ setterName: 'Jordan', createdBy: 'alex-sub' });
+    // No name given: falls back to the existing credit, then the account name.
+    expect((await call('PUT', '/climbs/c1', ALEX, climb())).body).toMatchObject({ setterName: 'Jordan' });
+    expect((await call('PUT', '/climbs/c2', SAM, climb())).body).toMatchObject({ setterName: 'Sam' });
+    expect((await call('PUT', '/climbs/c1', SAM, climb({ setterName: 'Sam' }))).status).toBe(403);
+  });
+
   it('only lets the owner mark benchmarks', async () => {
     const res = await call('PUT', '/climbs/c1', ALEX, climb({ benchmark: true }));
     expect(res.body).toMatchObject({ benchmark: false });

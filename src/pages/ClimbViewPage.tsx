@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { HoldOutline } from '../components/HoldOutline';
 import { Icon } from '../components/Icon';
-import { ClimbMeta, GradeChip, SignInPrompt, TickSummary } from '../components/ui';
+import { ClimbMeta, ClimbRules, GradeChip, SignInPrompt, TickSummary } from '../components/ui';
 import { WallCanvas } from '../components/WallCanvas';
 import { db, latestVersion, newId } from '../db';
 import { shapeBox, shapePath, unionBox } from '../lib/geometry';
@@ -90,6 +90,7 @@ export function ClimbViewPage() {
           <h1>
             {climb.name || 'Untitled'} <GradeChip grade={climb.grade} />
           </h1>
+          <ClimbRules climb={climb} catalog={catalog} full />
           <ClimbMeta climb={climb} catalog={catalog} />
           {perms.server && <TickSummary climb={climb} stats={stats} />}
         </div>

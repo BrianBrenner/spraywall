@@ -119,6 +119,8 @@ function climbFields(body: unknown) {
     tagIds: strArr(b.tagIds),
     notes: str(b.notes, 4000),
     holds,
+    /** Who set it, for display. Can be anyone, not just account holders. */
+    setterName: str(b.setterName, 60).trim(),
   };
 }
 
@@ -198,8 +200,9 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       const climb: Item = {
         ...fields,
         id,
+        // createdBy (who logged it) controls editing; setterName is just who gets credit.
         createdBy: existing?.createdBy ?? u.sub,
-        setterName: existing?.setterName ?? u.name,
+        setterName: fields.setterName || existing?.setterName || u.name,
         createdAt: existing?.createdAt ?? now(),
         updatedAt: now(),
       };
@@ -359,7 +362,8 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     for (const w of items(b.walls)) (await repo.put('wall', { id: w.id, name: str(w.name, 120), createdAt: num(w.createdAt) || now() }), count++);
     for (const v of items(b.versions)) (await repo.put('version', v), count++);
     for (const c of items(b.climbs)) {
-      await repo.put('climb', { ...c, ...climbFields(c), id: c.id, createdBy: c.createdBy ?? u.sub, setterName: c.setterName ?? u.name, createdAt: num(c.createdAt) || now(), updatedAt: now() });
+      const fields = climbFields(c);
+      await repo.put('climb', { ...c, ...fields, id: c.id, createdBy: c.createdBy ?? u.sub, setterName: fields.setterName || u.name, createdAt: num(c.createdAt) || now(), updatedAt: now() });
       count++;
     }
     for (const l of items(b.lists)) (await repo.put('list', { id: l.id, name: str(l.name, 120), climbIds: strArr(l.climbIds), createdAt: num(l.createdAt) || now() }), count++);

@@ -82,7 +82,8 @@ export function WallPage() {
       if (filters.footRuleId && c.footRuleId !== filters.footRuleId) return false;
       if (filters.tagIds.length && !filters.tagIds.every((t) => c.tagIds.includes(t))) return false;
       if (filters.benchmarksOnly && !c.benchmark) return false;
-      if (filters.setter && c.createdBy !== filters.setter) return false;
+      // Setter is the credited name (anyone, account or not), not who logged it.
+      if (filters.setter && (c.setterName ?? '').trim().toLowerCase() !== filters.setter.toLowerCase()) return false;
       if (filters.ticked !== 'any' && perms.signedIn && !!stats(c).mine !== (filters.ticked === 'yes')) return false;
       return true;
     });
@@ -110,7 +111,9 @@ export function WallPage() {
     (filters.minGrade || filters.maxGrade ? 1 : 0) + (filters.footRuleId ? 1 : 0) +
     filters.tagIds.length + (filters.benchmarksOnly ? 1 : 0) +
     (filters.setter ? 1 : 0) + (filters.ticked !== 'any' && perms.signedIn ? 1 : 0);
-  const setters = [...new Map(climbs.filter((c) => c.createdBy).map((c) => [c.createdBy!, c.setterName || 'Someone'])).entries()];
+  const setters = [...new Map(climbs.filter((c) => c.setterName?.trim()).map((c) => [c.setterName!.trim().toLowerCase(), c.setterName!.trim()])).values()].sort((a, b) =>
+    a.localeCompare(b),
+  );
 
   const rename = async () => {
     const name = prompt('Wall name', wall.name);
@@ -273,9 +276,9 @@ export function WallPage() {
                 </select>
               </label>
             </div>
-            {perms.server && (
+            {(perms.server || setters.length > 0) && (
               <div className="row">
-                {perms.signedIn && (
+                {perms.server && perms.signedIn && (
                   <label>
                     Your sends
                     <select value={filters.ticked} onChange={(e) => set({ ticked: e.target.value as Filters['ticked'] })}>
@@ -289,7 +292,7 @@ export function WallPage() {
                   Setter
                   <select value={filters.setter} onChange={(e) => set({ setter: e.target.value })}>
                     <option value="">Anyone</option>
-                    {setters.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                    {setters.map((name) => <option key={name} value={name}>{name}</option>)}
                   </select>
                 </label>
               </div>
