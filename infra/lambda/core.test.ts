@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { handle, memoryRepo, type Claims, type Deps } from './core';
+import { DAILY_LIMITS, handle, memoryRepo, type Claims, type Deps } from './core';
 
 const OWNER: Claims = { sub: 'owner-sub', email: 'Me@Example.com', email_verified: 'true', name: 'Brian' };
 const ALEX: Claims = { sub: 'alex-sub', email: 'alex@example.com', email_verified: 'true', name: 'Alex' };
@@ -101,6 +101,28 @@ describe('ticks', () => {
     await call('DELETE', '/walls/w1', OWNER);
     const state = (await call('GET', '/state')).body as Record<string, unknown[]>;
     expect([state.walls, state.versions, state.climbs, state.ticks]).toEqual([[], [], [], []]);
+  });
+});
+
+describe('daily limits', () => {
+  it('caps new climbs per person per day, but not edits or the owner', async () => {
+    for (let i = 0; i < DAILY_LIMITS.climbs; i++) expect((await call('PUT', `/climbs/a${i}`, ALEX, climb())).status).toBe(200);
+    const over = await call('PUT', '/climbs/one-more', ALEX, climb());
+    expect(over.status).toBe(429);
+    // Editing an existing climb still works, other people aren't affected, and the owner is exempt.
+    expect((await call('PUT', '/climbs/a0', ALEX, climb({ name: 'tweak' }))).status).toBe(200);
+    expect((await call('PUT', '/climbs/sam1', SAM, climb())).status).toBe(200);
+    expect((await call('PUT', '/climbs/own1', OWNER, climb())).status).toBe(200);
+    // A day later the window has moved on.
+    deps.now = () => 1000 + 24 * 60 * 60 * 1000 + 1;
+    expect((await call('PUT', '/climbs/next-day', ALEX, climb())).status).toBe(200);
+  });
+
+  it('caps new ticks per person per day', async () => {
+    for (let i = 0; i < DAILY_LIMITS.ticks; i++) await deps.repo.put('tick', { id: `t${i}#alex-sub`, climbId: `t${i}`, userId: 'alex-sub', date: 1000 });
+    await call('PUT', '/climbs/c1', OWNER, climb());
+    expect((await call('PUT', '/ticks/c1', ALEX, { stars: 2 })).status).toBe(429);
+    expect((await call('PUT', '/ticks/c1', SAM, { stars: 2 })).status).toBe(200);
   });
 });
 

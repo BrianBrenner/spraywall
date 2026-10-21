@@ -57,6 +57,10 @@ export interface Response {
   body?: unknown;
 }
 
+/** Per-person limits on new things in any 24 hours (the owner is exempt), so one account can't flood the wall. */
+export const DAILY_LIMITS = { climbs: 50, ticks: 200 };
+const DAY = 24 * 60 * 60 * 1000;
+
 class HttpError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -195,6 +199,10 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     if (method === 'PUT') {
       const fields = climbFields(req.body);
       if (!(await repo.get('version', fields.versionId))) fail(400, 'That wall photo no longer exists.');
+      if (!existing && !u.isOwner) {
+        const recent = (await repo.list('climb')).filter((c) => c.createdBy === u.sub && c.createdAt > now() - DAY).length;
+        if (recent >= DAILY_LIMITS.climbs) fail(429, `That’s ${DAILY_LIMITS.climbs} new climbs in a day, the limit. Try again tomorrow.`);
+      }
       // Only the owner marks benchmarks.
       if (!u.isOwner) fields.benchmark = existing?.benchmark === true;
       const climb: Item = {
@@ -224,6 +232,10 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       if (!(await repo.get('climb', climbId))) fail(404, 'Climb not found.');
       const b = isObj(req.body) ? req.body : {};
       const existing = await repo.get('tick', id);
+      if (!existing && !u.isOwner) {
+        const recent = (await repo.list('tick')).filter((t) => t.userId === u.sub && t.date > now() - DAY).length;
+        if (recent >= DAILY_LIMITS.ticks) fail(429, `That’s ${DAILY_LIMITS.ticks} ticks in a day, the limit. Try again tomorrow.`);
+      }
       const tick: Item = {
         id,
         climbId,

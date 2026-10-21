@@ -21,6 +21,7 @@ async function api<T>(method: string, path: string, body?: unknown, auth = true)
   const res = await fetch(`${backend!.apiUrl}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
+  if (res.status === 429 && !data.error) throw new Error('Too many requests at once. Wait a moment and try again.');
   if (!res.ok) throw new Error(data.error || data.message || `Request failed (${res.status}).`);
   return data as T;
 }

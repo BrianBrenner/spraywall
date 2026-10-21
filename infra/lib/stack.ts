@@ -1,5 +1,5 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
-import { CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
+import { CfnStage, CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
@@ -130,6 +130,11 @@ export class SprayWallStack extends Stack {
         maxAge: Duration.days(1),
       },
     });
+    // Cap the whole API far above what a group of friends needs, so a runaway script
+    // can't run up much of a bill (AWS's default allows thousands per second).
+    const stage = httpApi.defaultStage!.node.defaultChild as CfnStage;
+    stage.defaultRouteSettings = { throttlingRateLimit: 10, throttlingBurstLimit: 25 };
+
     const integration = new HttpLambdaIntegration('ApiIntegration', api);
     // API Gateway verifies sign-in tokens before the Lambda runs.
     const authorizer = new HttpJwtAuthorizer('Jwt', `https://cognito-idp.${this.region}.amazonaws.com/${users.userPoolId}`, {
