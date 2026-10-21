@@ -34,6 +34,8 @@ export interface Box {
 export interface Embedding {
   tile: Tile;
   feeds: Record<string, Tensor>;
+  /** Brightness (0–1) on the 256×256 mask grid, for telling shadows from holds. */
+  luma?: Float32Array;
 }
 
 export function makeTile(x: number, y: number, w: number, h: number): Tile {
@@ -89,9 +91,78 @@ export function preprocess(rgba: ArrayLike<number>, w: number, h: number): Float
   return out;
 }
 
-export async function encode(encoder: InferenceSession, Tensor: TensorCtor, tile: Tile, pixels: Float32Array): Promise<Embedding> {
+/** Average brightness of each 4×4 block of the (≤1024px) tile, i.e. one value per mask cell. */
+export function lumaGrid(rgba: ArrayLike<number>, w: number, h: number): Float32Array {
+  const out = new Float32Array(MASK_SIZE * MASK_SIZE);
+  for (let my = 0; my < Math.ceil(h / 4); my++) {
+    for (let mx = 0; mx < Math.ceil(w / 4); mx++) {
+      let sum = 0;
+      let n = 0;
+      for (let y = my * 4; y < Math.min(h, my * 4 + 4); y++) {
+        for (let x = mx * 4; x < Math.min(w, mx * 4 + 4); x++) {
+          const i = (y * w + x) * 4;
+          sum += 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+          n++;
+        }
+      }
+      out[my * MASK_SIZE + mx] = sum / n / 255;
+    }
+  }
+  return out;
+}
+
+export async function encode(encoder: InferenceSession, Tensor: TensorCtor, tile: Tile, pixels: Float32Array, luma?: Float32Array): Promise<Embedding> {
   const out = await encoder.run({ pixel_values: new Tensor('float32', pixels, [1, 3, SAM_SIZE, SAM_SIZE]) });
-  return { tile, feeds: { image_embeddings: out.image_embeddings, image_positional_embeddings: out.image_positional_embeddings } };
+  return { tile, luma, feeds: { image_embeddings: out.image_embeddings, image_positional_embeddings: out.image_positional_embeddings } };
+}
+
+/**
+ * Of SAM's candidate masks (cells on the 256 grid), the best-scoring one —
+ * unless a smaller candidate covers the same hold and the extra band the bigger
+ * one adds is darker than both the hold and the wall around it. That band is
+ * the hold's shadow, so the smaller mask is the better outline.
+ */
+export function preferWithoutShadow(cands: { cells: Uint8Array; iou: number }[], luma: Float32Array, size = MASK_SIZE): number {
+  if (!cands.length) return -1;
+  const area = (c: Uint8Array) => c.reduce((s, v) => s + v, 0);
+  const order = cands.map((_, i) => i).sort((a, b) => cands[b].iou - cands[a].iou);
+  const best = order[0];
+  const big = cands[best].cells;
+  const bigArea = area(big);
+  const mean = (pick: (i: number) => boolean) => {
+    let sum = 0;
+    let n = 0;
+    for (let i = 0; i < size * size; i++) if (pick(i)) (sum += luma[i], n++);
+    return n ? sum / n : NaN;
+  };
+  // A band just outside the big mask stands in for "the wall around the hold".
+  let x1 = size, y1 = size, x2 = -1, y2 = -1;
+  for (let i = 0; i < size * size; i++) {
+    if (!big[i]) continue;
+    const x = i % size, y = (i / size) | 0;
+    x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y);
+  }
+  const pad = 3;
+  const outside = mean((i) => {
+    const x = i % size, y = (i / size) | 0;
+    return !big[i] && x >= x1 - pad && x <= x2 + pad && y >= y1 - pad && y <= y2 + pad;
+  });
+  for (const k of order.slice(1)) {
+    const small = cands[k].cells;
+    const smallArea = area(small);
+    if (smallArea < bigArea * 0.3 || smallArea > bigArea * 0.85) continue;
+    const ring = mean((i) => !!big[i] && !small[i]);
+    const inner = mean((i) => !!small[i]);
+    if (ring < inner * 0.8 && ring < outside * 0.8) return k;
+  }
+  return best;
+}
+
+/** Candidate m's cells (logit > 0) as a 0/1 grid. */
+function cellsOf(masks: Float32Array, offset: number) {
+  const cells = new Uint8Array(MASK_SIZE * MASK_SIZE);
+  for (let i = 0; i < cells.length; i++) cells[i] = masks[offset + i] > 0 ? 1 : 0;
+  return cells;
 }
 
 interface Decoded {
@@ -183,13 +254,20 @@ export async function outlineBoxes(decoder: InferenceSession, Tensor: TensorCtor
     chunk.forEach((b, k) => {
       const region = grow(b, 0.15);
       const boxArea = (b.x2 - b.x1) * (b.y2 - b.y1);
-      let best = -1;
+      const valid: { m: number; cells: Uint8Array; iou: number }[] = [];
       for (let m = 0; m < 3; m++) {
         const offset = (k * 3 + m) * MASK_SIZE * MASK_SIZE;
         const st = maskStats(masks, offset, emb.tile, region);
-        if (st.area > 0.25 * boxArea && st.insideFrac > 0.9 && (best < 0 || iou[k * 3 + m] > iou[k * 3 + best])) best = m;
+        if (st.area > 0.25 * boxArea && st.insideFrac > 0.9) valid.push({ m, cells: cellsOf(masks, offset), iou: iou[k * 3 + m] });
       }
-      result.push(best < 0 ? null : outline(masks, (k * 3 + best) * MASK_SIZE * MASK_SIZE, emb.tile, region));
+      if (!valid.length) {
+        result.push(null);
+        return;
+      }
+      const pick = emb.luma ? valid[preferWithoutShadow(valid, emb.luma)] : valid.reduce((a, c) => (c.iou > a.iou ? c : a));
+      // The detector's box is usually tight around the hold itself; clipping to it
+      // (plus a sliver) trims shadows SAM tends to include.
+      result.push(outline(masks, (k * 3 + pick.m) * MASK_SIZE * MASK_SIZE, emb.tile, grow(b, 0.03)));
     });
   }
   return result;
@@ -204,18 +282,15 @@ export async function outlineAtPoint(decoder: InferenceSession, Tensor: TensorCt
     ? await decode(decoder, Tensor, emb, [[[x, y], [box.x1, box.y1], [box.x2, box.y2]]], [[1, 2, 3]])
     : await decode(decoder, Tensor, emb, [[[x, y]]], [[1]]);
   const tileArea = emb.tile.w * emb.tile.h;
-  let best = -1;
-  let bestBounds: Box | null = null;
+  const valid: { m: number; cells: Uint8Array; iou: number; bounds: Box }[] = [];
   for (let m = 0; m < 3; m++) {
     const offset = m * MASK_SIZE * MASK_SIZE;
     if (logitAt(masks, offset, emb.tile, x, y) <= 0) continue;
     const st = maskStats(masks, offset, emb.tile);
     if (st.area < 30 || st.area > 0.06 * tileArea) continue;
-    if (best < 0 || iou[m] > iou[best]) {
-      best = m;
-      bestBounds = st.bounds;
-    }
+    valid.push({ m, cells: cellsOf(masks, offset), iou: iou[m], bounds: st.bounds });
   }
-  if (best < 0 || !bestBounds) return null;
-  return outline(masks, best * MASK_SIZE * MASK_SIZE, emb.tile, grow(bestBounds, 0.05));
+  if (!valid.length) return null;
+  const pick = emb.luma ? valid[preferWithoutShadow(valid, emb.luma)] : valid.reduce((a, c) => (c.iou > a.iou ? c : a));
+  return outline(masks, pick.m * MASK_SIZE * MASK_SIZE, emb.tile, grow(pick.bounds, 0.05));
 }

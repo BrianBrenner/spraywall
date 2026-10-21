@@ -2,7 +2,7 @@ import type { InferenceSession } from 'onnxruntime-web';
 import type { Hold, HoldShape } from '../types';
 import { shapeBox } from './geometry';
 import { loadImage, makeCanvas } from './image';
-import { bestTile, encode, makeTile, outlineAtPoint, outlineBoxes, planTiles, preprocess, SAM_SIZE, type Embedding, type Tile } from './samCore';
+import { bestTile, encode, lumaGrid, makeTile, outlineAtPoint, outlineBoxes, planTiles, preprocess, SAM_SIZE, type Embedding, type Tile } from './samCore';
 
 const base = `${import.meta.env.BASE_URL}models/`;
 
@@ -34,9 +34,11 @@ async function embedTile(img: HTMLImageElement, tile: Tile): Promise<Embedding> 
   const h = Math.round(tile.h * tile.scale);
   const { canvas, ctx } = makeCanvas(Math.min(w, SAM_SIZE), Math.min(h, SAM_SIZE));
   ctx.drawImage(img, tile.x, tile.y, tile.w, tile.h, 0, 0, canvas.width, canvas.height);
-  const pixels = preprocess(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+  const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const pixels = preprocess(rgba, canvas.width, canvas.height);
+  const luma = lumaGrid(rgba, canvas.width, canvas.height);
   canvas.width = 0;
-  return encode(encoder, Tensor, tile, pixels);
+  return encode(encoder, Tensor, tile, pixels, luma);
 }
 
 /**
