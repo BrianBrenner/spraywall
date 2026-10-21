@@ -1688,6 +1688,18 @@ legend {
   --border: #2a2a2f;
 }
 
+.climb-view-top {
+  position: relative;
+  z-index: 5;
+}
+
+/* Panels open just under the header, whatever its height, so they never cover its buttons. */
+.climb-view-top > .popover {
+  top: calc(100% + 8px);
+  max-height: 65vh;
+  max-height: 65dvh;
+}
+
 .climb-view-header {
   display: flex;
   flex-wrap: wrap;
@@ -1803,6 +1815,84 @@ legend {
 
 .icon-btn.sent {
   color: #22c55e;
+}
+
+.send-btn {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.climb-view .send-btn {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.climb-view .send-btn.sent {
+  background: #166534;
+  color: #fff;
+}
+
+.summary-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  align-self: flex-start;
+}
+
+.menu {
+  padding: 6px;
+  width: min(240px, calc(100% - 24px));
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: #26262a;
+}
+
+.info-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 16px;
+  margin: 8px 0 16px;
+}
+
+.info-list dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding-top: 2px;
+}
+
+.info-list dd {
+  margin: 0;
+}
+
+.info-list .stars {
+  color: var(--star);
+  font-weight: 650;
+}
+
+.info-panel .tick-list {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: none;
 }
 
 .tick-sheet .field {

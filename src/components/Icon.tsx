@@ -67,6 +67,13 @@ const PATHS = {
     </>
   ),
   sort: <path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4" />,
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 16v-4.5M12 8h.01" />
+    </>
+  ),
+  more: <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth={3.5} />,
   star: <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />,
 };
 
