@@ -118,6 +118,7 @@ export function ClimbRow({ climb, catalog, stats, versionLabel, onOpen, children
             <GradeChip grade={climb.grade} />
             <ClimbRules climb={climb} catalog={catalog} />
           </div>
+          {climb.setterName && <span className="byline">Set by {climb.setterName}</span>}
           <ClimbMeta climb={climb} catalog={catalog} />
           <TickSummary climb={climb} stats={stats} />
           {versionLabel && <span className="climb-version">{versionLabel}</span>}

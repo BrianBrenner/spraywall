@@ -1339,6 +1339,15 @@ legend {
   white-space: nowrap;
 }
 
+.byline {
+  margin-top: -3px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .climb-meta {
   display: flex;
   flex-wrap: wrap;

@@ -108,6 +108,7 @@ export function ClimbViewPage() {
             <h1>
               {climb.name || 'Untitled'} <GradeChip grade={climb.grade} />
             </h1>
+            {climb.setterName && <span className="byline">Set by {climb.setterName}</span>}
             <ClimbRules climb={climb} catalog={catalog} full />
             <ClimbMeta climb={climb} catalog={catalog} />
             {perms.server && (
