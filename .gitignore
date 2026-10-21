@@ -26,3 +26,9 @@ test-wall.*
 
 # Local tool config
 .claude/
+
+# Infra
+infra/node_modules/
+infra/cdk.out/
+infra/outputs.json
+infra/.deploy-settings

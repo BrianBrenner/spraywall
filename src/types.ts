@@ -27,6 +27,8 @@ export interface WallVersion {
   height: number;
   holds: Hold[];
   createdAt: number;
+  /** Where the photo lives on the server (server mode); `image` is the cached copy. */
+  photoUrl?: string;
 }
 
 export type HoldRole = 'start' | 'hand' | 'foot' | 'finish';
@@ -51,7 +53,26 @@ export interface Climb {
   notes: string;
   holds: ClimbHold[];
   thumbnail?: Blob;
+  /** Server mode: who set it. */
+  createdBy?: string;
+  setterName?: string;
   createdAt: number;
+  updatedAt: number;
+}
+
+/** Someone's send of a climb (server mode). One per person per climb. */
+export interface Tick {
+  /** `${climbId}#${userId}` */
+  id: string;
+  climbId: string;
+  userId: string;
+  userName: string;
+  /** Grade opinion, from the same scale as the climb. */
+  grade: string;
+  /** Quality, 0 (none given) to 3. */
+  stars: number;
+  note: string;
+  date: number;
   updatedAt: number;
 }
 

@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { blobUrl } from '../lib/image';
 import type { Climb } from '../types';
 import type { Catalog } from '../lib/hooks';
+import type { TickStats } from '../lib/ticks';
 import { Icon } from './Icon';
 
 /**
@@ -57,9 +58,22 @@ export function GradeChip({ grade }: { grade: string }) {
   return <span className="grade-chip">{grade || '—'}</span>;
 }
 
-export function ClimbRow({ climb, catalog, versionLabel, onOpen, children }: {
+/** Sends, rating, consensus grade and setter, when there's anything to show. */
+export function TickSummary({ climb, stats }: { climb: Climb; stats?: TickStats }) {
+  const parts: ReactNode[] = [];
+  if (stats?.mine) parts.push(<span key="mine" className="sent"><Icon name="check" size={13} /> Sent</span>);
+  if (stats && stats.stars > 0) parts.push(<span key="stars" className="stars"><Icon name="star" size={12} fill="currentColor" /> {stats.stars.toFixed(1)}</span>);
+  if (stats?.count) parts.push(<span key="count">{stats.count} {stats.count === 1 ? 'send' : 'sends'}</span>);
+  if (stats?.consensus && stats.consensus !== climb.grade) parts.push(<span key="cons">feels {stats.consensus}</span>);
+  if (climb.setterName) parts.push(<span key="by">by {climb.setterName}</span>);
+  if (!parts.length) return null;
+  return <div className="tick-summary">{parts}</div>;
+}
+
+export function ClimbRow({ climb, catalog, stats, versionLabel, onOpen, children }: {
   climb: Climb;
   catalog: Catalog;
+  stats?: TickStats;
   versionLabel?: string;
   onOpen: () => void;
   children?: ReactNode;
@@ -74,10 +88,30 @@ export function ClimbRow({ climb, catalog, versionLabel, onOpen, children }: {
             <GradeChip grade={climb.grade} />
           </div>
           <ClimbMeta climb={climb} catalog={catalog} />
+          <TickSummary climb={climb} stats={stats} />
           {versionLabel && <span className="climb-version">{versionLabel}</span>}
         </div>
       </button>
       {children}
     </li>
+  );
+}
+
+/** Shown on owner-only screens to everyone else (only reachable by a pasted link). */
+export function OwnerOnly() {
+  return (
+    <div className="page">
+      <PageHeader title="Owner only" back />
+      <p className="empty">Only the wall owner can do this.</p>
+    </div>
+  );
+}
+
+/** Explains what signing in unlocks, with a link to the Profile tab. */
+export function SignInPrompt({ what }: { what: string }) {
+  return (
+    <p className="notice">
+      <Link to="/profile">Sign in</Link> to {what}.
+    </p>
   );
 }

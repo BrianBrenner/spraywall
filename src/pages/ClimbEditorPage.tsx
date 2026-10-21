@@ -3,9 +3,11 @@ import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { HoldOutline } from '../components/HoldOutline';
 import { Icon } from '../components/Icon';
-import { PageHeader } from '../components/ui';
+import { OwnerOnly, PageHeader, SignInPrompt } from '../components/ui';
 import { useViewScale, WallCanvas } from '../components/WallCanvas';
-import { db, deleteClimbs, latestVersion, newId } from '../db';
+import { db, latestVersion, newId } from '../db';
+import { removeClimb, saveClimb } from '../lib/mutations';
+import { usePermissions } from '../lib/permissions';
 import { holdAt, shapeBox } from '../lib/geometry';
 import { useHistory, useUndoKeys } from '../lib/history';
 import { useCatalog, type Catalog } from '../lib/hooks';
@@ -18,6 +20,7 @@ export function ClimbEditorPage() {
   const { climbId } = useParams();
   const [params] = useSearchParams();
   const catalog = useCatalog();
+  const perms = usePermissions();
   const data = useLiveQuery(async () => {
     if (climbId) {
       const climb = await db.climbs.get(climbId);
@@ -30,6 +33,8 @@ export function ClimbEditorPage() {
 
   if (!catalog || data === undefined) return null;
   if (!data?.version) return <div className="empty">Climb not found.</div>;
+  if (!perms.canSet) return <SignInRequired />;
+  if (data.climb && !perms.canEdit(data.climb)) return <OwnerOnly />;
   return <ClimbEditor key={climbId ?? 'new'} catalog={catalog} climb={data.climb} version={data.version} />;
 }
 
@@ -48,6 +53,8 @@ function ClimbEditor({ catalog, climb, version }: { catalog: Catalog; climb?: Cl
   const [tagIds, setTagIds] = useState<string[]>(climb?.tagIds ?? []);
   const [notes, setNotes] = useState(climb?.notes ?? '');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const { isOwner } = usePermissions();
 
   const roles = new Map(history.value.map((h) => [h.holdId, h.role]));
   const system = catalog.gradeSystem(gradeSystemId);
@@ -82,13 +89,24 @@ function ClimbEditor({ catalog, climb, version }: { catalog: Catalog; climb?: Cl
       updatedAt: now,
     };
     draft.thumbnail = await renderThumbnail(draft, version);
-    await db.climbs.put(draft);
+    try {
+      await saveClimb({ ...climb, ...draft });
+    } catch (e) {
+      setError((e as Error).message);
+      setSaving(false);
+      return;
+    }
     navigate(`/climbs/${draft.id}`, { replace: true });
   };
 
   const remove = async () => {
     if (!climb || !confirm(`Delete "${climb.name || 'Untitled'}"?`)) return;
-    await deleteClimbs([climb.id]);
+    try {
+      await removeClimb(climb.id);
+    } catch (e) {
+      setError((e as Error).message);
+      return;
+    }
     navigate(`/walls/${climb.wallId}`, { replace: true });
   };
 
@@ -132,6 +150,7 @@ function ClimbEditor({ catalog, climb, version }: { catalog: Catalog; climb?: Cl
         </div>
         <form className="split-panel form" onSubmit={(e) => e.preventDefault()}>
           {version.holds.length === 0 && <p className="error">This photo has no holds outlined yet.</p>}
+          {error && <p className="error">{error}</p>}
           <label>
             Name
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Untitled" />
@@ -164,11 +183,13 @@ function ClimbEditor({ catalog, climb, version }: { catalog: Catalog; climb?: Cl
             <input type="checkbox" checked={noMatching} onChange={(e) => setNoMatching(e.target.checked)} />
             No matching
           </label>
-          <label className="check">
-            <input type="checkbox" checked={benchmark} onChange={(e) => setBenchmark(e.target.checked)} />
-            Benchmark
-            <span className="muted small">a reference climb for its grade</span>
-          </label>
+          {isOwner && (
+            <label className="check">
+              <input type="checkbox" checked={benchmark} onChange={(e) => setBenchmark(e.target.checked)} />
+              Benchmark
+              <span className="muted small">a reference climb for its grade</span>
+            </label>
+          )}
           <fieldset>
             <legend>Tags</legend>
             <div className="chips">
@@ -223,5 +244,16 @@ function RoleTag({ hold, role }: { hold: Hold; role: HoldRole }) {
         {text}
       </text>
     </g>
+  );
+}
+
+function SignInRequired() {
+  return (
+    <div className="page">
+      <PageHeader title="Set a climb" back />
+      <div className="page-body">
+        <SignInPrompt what="set climbs" />
+      </div>
+    </div>
   );
 }

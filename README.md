@@ -32,7 +32,45 @@ All on-device (onnxruntime-web), models in `public/models/` (see its README for 
 - **Refine outlines** — SlimSAM turns each ellipse into a polygon that follows the hold, processing the photo in ~1024px tiles (`src/lib/sam.ts`, `src/lib/samCore.ts`, `src/lib/polygon.ts`).
 - **Trace** tool — tap a hold to outline it with SlimSAM.
 
+## Shared server (optional)
+
+Without a server the app is local-only: everything stays on one device. With the AWS backend in `infra/`, everyone shares the same walls and climbs:
+
+| | Anyone | Friend (signed in) | Owner |
+|---|---|---|---|
+| Browse walls, climbs, lists | ✓ | ✓ | ✓ |
+| Set climbs; edit/delete their own | | ✓ | ✓ |
+| Tick (grade opinion, 1–3 stars, note) | | ✓ | ✓ |
+| Walls, photos, holds, lists, benchmarks, grades/foot rules/tags | | | ✓ |
+| Invite code, remove members, any climb | | | ✓ |
+
+Friends make an account (name, email, password) with the **invite code**; the Cognito pre sign-up hook rejects anything else and confirms valid sign-ups on the spot. The owner is whoever signs up with the owner email given at deploy time. Access rules live in `infra/lambda/core.ts` (tested in `core.test.ts`).
+
+**AWS pieces** (`infra/lib/stack.ts`, one CloudFormation stack in us-east-1): Cognito user pool, API Gateway HTTP API (verifies sign-in tokens) → one Lambda → DynamoDB (on-demand, point-in-time recovery), and an S3 bucket behind CloudFront for wall photos. Data and photos are kept if the stack is deleted.
+
+### Deploying (from a computer with your personal AWS profile)
+
+Needs Git, Node.js 22+ and the AWS CLI with a profile named `spraywall` (`aws configure --profile spraywall`).
+
+```bash
+git clone https://github.com/BrianBrenner/spraywall.git && cd spraywall
+./infra/deploy.sh
+git add src/aws-config.json && git commit -m "Point app at AWS" && git push
+```
+
+The script shows which AWS account it will use and waits for `yes`, asks for the owner email and starting invite code the first time, deploys, and writes `src/aws-config.json` (IDs and URLs only). Pushing that file makes the live site use the server. Rerun the script whenever `infra/` changes.
+
+Then open the site → **Profile** → **Create an account** with the owner email and invite code. To move walls made before the server existed: on the old device, Settings → Export backup; on the server version, Settings → Import.
+
+### Trying the server version locally
+
+```bash
+cd infra && npm install && npm run dev     # stand-in backend on :8787 (real API rules, in-memory data)
+npm run dev:server                          # app pointed at it, from the repo root
+```
+
+Sign up as `owner@example.com` with invite code `crimp` to be the owner; any other email is a friend. Password reset codes print in the backend's terminal (always `123456`).
+
 ## Roadmap
 
-- **To do: automatic cloud backup to S3.** Back up when the app opens (or after changes, at most every so often), keep history, and restore from a list of dates. Keep AWS credentials out of the app: a private, versioned, encrypted S3 bucket with a lifecycle rule for old versions, plus a small Lambda (function URL) that hands out short-lived presigned upload/download URLs only when the request carries a backup code entered once per device. Deploy it as one reviewable CloudFormation template. Optional: encrypt backups on-device with a passphrase before upload.
 - Phase 3: wrap with Capacitor for the App Store / Play Store. The detector is AGPL-3.0, which needs resolving before a closed-source store release.

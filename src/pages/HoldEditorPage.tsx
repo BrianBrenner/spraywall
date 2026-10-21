@@ -3,11 +3,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { HoldOutline } from '../components/HoldOutline';
 import { Icon, type IconName } from '../components/Icon';
-import { PageHeader } from '../components/ui';
+import { OwnerOnly, PageHeader } from '../components/ui';
+import { usePermissions } from '../lib/permissions';
 import { useViewScale, WallCanvas } from '../components/WallCanvas';
 import { db, newId } from '../db';
 import { detectHolds, detectionToShape, newDetections, type Detection } from '../lib/detect';
 import { holdAt, shapePath, translateShape } from '../lib/geometry';
+import { saveHolds } from '../lib/mutations';
 import { HoldTracer, refineOutlines } from '../lib/sam';
 import { useHistory, useUndoKeys } from '../lib/history';
 import { blobUrl } from '../lib/image';
@@ -16,6 +18,12 @@ import type { Hold, HoldShape, WallVersion } from '../types';
 type Tool = 'select' | 'circle' | 'polygon' | 'trace' | 'moveAll';
 
 export function HoldEditorPage() {
+  const { isOwner } = usePermissions();
+  if (!isOwner) return <OwnerOnly />;
+  return <HoldEditorRoute />;
+}
+
+function HoldEditorRoute() {
   const { versionId } = useParams();
   const version = useLiveQuery(() => db.versions.get(versionId!), [versionId]);
   if (version === undefined) return null;
@@ -60,8 +68,8 @@ function HoldEditor({ version }: { version: WallVersion }) {
     if (holds === saved.current) return;
     const t = setTimeout(() => {
       saved.current = holds;
-      db.versions.update(version.id, { holds });
-    }, 300);
+      saveHolds(version.id, holds).catch((e) => setDetection({ status: 'error', message: `Couldn’t save: ${(e as Error).message}` }));
+    }, 600);
     return () => clearTimeout(t);
   }, [holds, version.id]);
   const latest = useRef(holds);
@@ -69,7 +77,7 @@ function HoldEditor({ version }: { version: WallVersion }) {
   useEffect(
     () => () => {
       // Flush on leave.
-      if (latest.current !== saved.current) db.versions.update(version.id, { holds: latest.current });
+      if (latest.current !== saved.current) saveHolds(version.id, latest.current).catch(() => {});
     },
     [version.id],
   );

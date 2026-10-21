@@ -4,11 +4,16 @@ import { Icon } from '../components/Icon';
 import { ClimbRow, PageHeader } from '../components/ui';
 import { db } from '../db';
 import { setClimbQueue, useCatalog } from '../lib/hooks';
+import { removeList, saveList } from '../lib/mutations';
+import { usePermissions } from '../lib/permissions';
+import { useTickStats } from '../lib/ticks';
 
 export function ListPage() {
   const { listId } = useParams();
   const navigate = useNavigate();
   const catalog = useCatalog();
+  const perms = usePermissions();
+  const stats = useTickStats((id) => catalog?.gradeSystem(id));
   const data = useLiveQuery(async () => {
     const list = await db.lists.get(listId!);
     if (!list) return null;
@@ -27,7 +32,7 @@ export function ListPage() {
     const ids = [...list.climbIds];
     const [id] = ids.splice(from, 1);
     ids.splice(to, 0, id);
-    db.lists.update(list.id, { climbIds: ids });
+    saveList({ ...list, climbIds: ids }).catch((e) => alert(e.message));
   };
 
   const open = (index: number) => {
@@ -37,18 +42,23 @@ export function ListPage() {
 
   const rename = async () => {
     const name = prompt('List name', list.name);
-    if (name?.trim()) await db.lists.update(list.id, { name: name.trim() });
+    if (name?.trim()) await saveList({ ...list, name: name.trim() }).catch((e) => alert(e.message));
   };
 
   const remove = async () => {
     if (!confirm(`Delete list "${list.name}"? The climbs themselves are kept.`)) return;
-    await db.lists.delete(list.id);
+    try {
+      await removeList(list.id);
+    } catch (e) {
+      alert((e as Error).message);
+      return;
+    }
     navigate('/lists', { replace: true });
   };
 
   return (
     <>
-      <PageHeader title={<button type="button" className="title-btn" onClick={rename}>{list.name}</button>} back="/lists">
+      <PageHeader title={perms.isOwner ? <button type="button" className="title-btn" onClick={rename}>{list.name}</button> : list.name} back="/lists">
         {climbs.length > 0 && (
           <button type="button" className="btn primary" onClick={() => open(0)}>
             <Icon name="play" size={16} /> Climb through
@@ -59,8 +69,8 @@ export function ListPage() {
         {climbs.length === 0 && <p className="empty">Open a climb and tap “Lists” to add it here.</p>}
         <ul className="climb-list">
           {climbs.map((c, i) => (
-            <ClimbRow key={c.id} climb={c} catalog={catalog} versionLabel={multiWall ? walls.get(c.wallId) : undefined} onOpen={() => open(i)}>
-              <div className="row-actions vertical">
+            <ClimbRow key={c.id} climb={c} catalog={catalog} stats={perms.server ? stats(c) : undefined} versionLabel={multiWall ? walls.get(c.wallId) : undefined} onOpen={() => open(i)}>
+              {perms.isOwner && <div className="row-actions vertical">
                 <button type="button" className="icon-btn" aria-label="Move up" disabled={i === 0} onClick={() => move(i, i - 1)}>
                   <Icon name="up" size={18} />
                 </button>
@@ -71,19 +81,21 @@ export function ListPage() {
                   type="button"
                   className="icon-btn"
                   aria-label="Remove from list"
-                  onClick={() => db.lists.update(list.id, { climbIds: list.climbIds.filter((id) => id !== c.id) })}
+                  onClick={() => saveList({ ...list, climbIds: list.climbIds.filter((id) => id !== c.id) }).catch((e) => alert(e.message))}
                 >
                   <Icon name="close" size={18} />
                 </button>
-              </div>
+              </div>}
             </ClimbRow>
           ))}
         </ul>
-        <div className="page-footer">
-          <button type="button" className="btn ghost danger" onClick={remove}>
-            <Icon name="trash" size={16} /> Delete list
-          </button>
-        </div>
+        {perms.isOwner && (
+          <div className="page-footer">
+            <button type="button" className="btn ghost danger" onClick={remove}>
+              <Icon name="trash" size={16} /> Delete list
+            </button>
+          </div>
+        )}
       </div>
     </>
   );

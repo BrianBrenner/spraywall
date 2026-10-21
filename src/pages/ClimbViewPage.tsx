@@ -3,11 +3,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { HoldOutline } from '../components/HoldOutline';
 import { Icon } from '../components/Icon';
-import { ClimbMeta, GradeChip } from '../components/ui';
+import { ClimbMeta, GradeChip, SignInPrompt, TickSummary } from '../components/ui';
 import { WallCanvas } from '../components/WallCanvas';
 import { db, latestVersion, newId } from '../db';
 import { shapeBox, shapePath, unionBox } from '../lib/geometry';
 import { getClimbQueue, useCatalog, useWakeLock } from '../lib/hooks';
+import { pushCatalog, removeTick, saveList, saveTick, updateClimb } from '../lib/mutations';
+import { usePermissions } from '../lib/permissions';
+import { useTickStats, type TickStats } from '../lib/ticks';
 import { blobUrl } from '../lib/image';
 import { ROLE_COLORS } from '../lib/roles';
 import type { Climb } from '../types';
@@ -25,8 +28,10 @@ export function ClimbViewPage() {
     return { climb, version, isOldPhoto: latest?.id !== climb.versionId };
   }, [climbId]);
   // One popover at a time.
-  const [popover, setPopover] = useState<'lists' | 'tags' | null>(null);
-  const togglePopover = (p: 'lists' | 'tags') => setPopover((cur) => (cur === p ? null : p));
+  const [popover, setPopover] = useState<'lists' | 'tags' | 'ticks' | null>(null);
+  const togglePopover = (p: 'lists' | 'tags' | 'ticks') => setPopover((cur) => (cur === p ? null : p));
+  const perms = usePermissions();
+  const tickStats = useTickStats((id) => catalog?.gradeSystem(id));
   const [showNotes, setShowNotes] = useState(true);
   useWakeLock();
 
@@ -65,6 +70,8 @@ export function ClimbViewPage() {
     );
   }
   const { climb, version, isOldPhoto } = data;
+  const stats = tickStats(climb);
+  const canEdit = perms.canEdit(climb);
   const holdsById = new Map(version.holds.map((h) => [h.id, h]));
   const used = climb.holds.flatMap((ch) => {
     const hold = holdsById.get(ch.holdId);
@@ -82,29 +89,47 @@ export function ClimbViewPage() {
             {climb.name || 'Untitled'} <GradeChip grade={climb.grade} />
           </h1>
           <ClimbMeta climb={climb} catalog={catalog} />
+          {perms.server && <TickSummary climb={climb} stats={stats} />}
         </div>
         <div className="header-actions">
           {isOldPhoto && <span className="badge muted">photo v{version.number}</span>}
           <FullscreenButton />
-          <button
+          {perms.server && (
+            <button
+              type="button"
+              className={`icon-btn ${popover === 'ticks' ? 'on' : ''} ${stats.mine ? 'sent' : ''}`}
+              aria-label={stats.mine ? 'Your tick' : 'Tick this climb'}
+              title={stats.mine ? 'Your tick' : 'Tick'}
+              onClick={() => togglePopover('ticks')}
+            >
+              <Icon name="check" />
+            </button>
+          )}
+          {perms.isOwner && <button
             type="button"
             className={`icon-btn ${climb.benchmark ? 'starred' : ''}`}
             aria-label={climb.benchmark ? 'Remove benchmark' : 'Mark as benchmark'}
             aria-pressed={!!climb.benchmark}
             title={climb.benchmark ? 'Benchmark' : 'Mark as benchmark'}
-            onClick={() => db.climbs.update(climb.id, { benchmark: !climb.benchmark, updatedAt: Date.now() })}
+            onClick={() => updateClimb(climb.id, { benchmark: !climb.benchmark }).catch((e) => alert(e.message))}
           >
             <Icon name="star" fill={climb.benchmark ? 'currentColor' : 'none'} />
-          </button>
-          <button type="button" className={`icon-btn ${popover === 'tags' ? 'on' : ''}`} aria-label="Tags" title="Tags" onClick={() => togglePopover('tags')}>
-            <Icon name="tag" />
-          </button>
-          <button type="button" className={`icon-btn ${popover === 'lists' ? 'on' : ''}`} aria-label="Lists" title="Add to lists" onClick={() => togglePopover('lists')}>
-            <Icon name="bookmark" />
-          </button>
-          <Link className="icon-btn" aria-label="Edit" title="Edit" to={`/climbs/${climb.id}/edit`}>
-            <Icon name="edit" />
-          </Link>
+          </button>}
+          {canEdit && (
+            <button type="button" className={`icon-btn ${popover === 'tags' ? 'on' : ''}`} aria-label="Tags" title="Tags" onClick={() => togglePopover('tags')}>
+              <Icon name="tag" />
+            </button>
+          )}
+          {perms.isOwner && (
+            <button type="button" className={`icon-btn ${popover === 'lists' ? 'on' : ''}`} aria-label="Lists" title="Add to lists" onClick={() => togglePopover('lists')}>
+              <Icon name="bookmark" />
+            </button>
+          )}
+          {canEdit && (
+            <Link className="icon-btn" aria-label="Edit" title="Edit" to={`/climbs/${climb.id}/edit`}>
+              <Icon name="edit" />
+            </Link>
+          )}
         </div>
       </header>
 
@@ -120,7 +145,8 @@ export function ClimbViewPage() {
       </WallCanvas>
 
       {popover === 'lists' && <ListPicker climb={climb} onClose={() => setPopover(null)} />}
-      {popover === 'tags' && <TagPicker climb={climb} catalog={catalog} onClose={() => setPopover(null)} />}
+      {popover === 'tags' && <TagPicker climb={climb} catalog={catalog} canCreate={perms.isOwner} onClose={() => setPopover(null)} />}
+      {popover === 'ticks' && <TickSheet climb={climb} catalog={catalog} stats={stats} signedIn={perms.signedIn} onClose={() => setPopover(null)} />}
       {climb.notes && (
         <button type="button" className={`climb-notes ${showNotes ? '' : 'collapsed'}`} onClick={() => setShowNotes((s) => !s)}>
           {showNotes ? climb.notes : 'Notes'}
@@ -169,10 +195,10 @@ function FullscreenButton() {
 }
 
 /** Tag the climb in place, including creating a new tag, without opening the editor. */
-function TagPicker({ climb, catalog, onClose }: { climb: Climb; catalog: Catalog; onClose: () => void }) {
+function TagPicker({ climb, catalog, canCreate, onClose }: { climb: Climb; catalog: Catalog; canCreate: boolean; onClose: () => void }) {
   const [name, setName] = useState('');
 
-  const setTags = (tagIds: string[]) => db.climbs.update(climb.id, { tagIds, updatedAt: Date.now() });
+  const setTags = (tagIds: string[]) => updateClimb(climb.id, { tagIds }).catch((e) => alert(e.message));
 
   const create = async () => {
     const trimmed = name.trim();
@@ -180,7 +206,10 @@ function TagPicker({ climb, catalog, onClose }: { climb: Climb; catalog: Catalog
     // Reuse an existing tag with the same name rather than making a duplicate.
     const existing = catalog.tags.find((t) => t.name.toLowerCase() === trimmed.toLowerCase());
     const id = existing?.id ?? newId();
-    if (!existing) await db.tags.add({ id, name: trimmed });
+    if (!existing) {
+      await db.tags.add({ id, name: trimmed });
+      await pushCatalog().catch((e) => alert(e.message));
+    }
     if (!climb.tagIds.includes(id)) await setTags([...climb.tagIds, id]);
     setName('');
   };
@@ -209,10 +238,12 @@ function TagPicker({ climb, catalog, onClose }: { climb: Climb; catalog: Catalog
           );
         })}
       </div>
-      <form className="inline-form" onSubmit={(e) => { e.preventDefault(); create(); }}>
-        <input placeholder="New tag" value={name} onChange={(e) => setName(e.target.value)} />
-        <button type="submit" className="btn" disabled={!name.trim()}>Add</button>
-      </form>
+      {canCreate && (
+        <form className="inline-form" onSubmit={(e) => { e.preventDefault(); create(); }}>
+          <input placeholder="New tag" value={name} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" className="btn" disabled={!name.trim()}>Add</button>
+        </form>
+      )}
     </div>
   );
 }
@@ -222,14 +253,15 @@ function ListPicker({ climb, onClose }: { climb: Climb; onClose: () => void }) {
   const [name, setName] = useState('');
 
   const toggle = async (listId: string, on: boolean) => {
-    await db.lists.where('id').equals(listId).modify((l) => {
-      l.climbIds = on ? [...l.climbIds.filter((id) => id !== climb.id), climb.id] : l.climbIds.filter((id) => id !== climb.id);
-    });
+    const l = lists?.find((x) => x.id === listId);
+    if (!l) return;
+    const climbIds = on ? [...l.climbIds.filter((id) => id !== climb.id), climb.id] : l.climbIds.filter((id) => id !== climb.id);
+    await saveList({ ...l, climbIds }).catch((e) => alert(e.message));
   };
 
   const create = async () => {
     if (!name.trim()) return;
-    await db.lists.add({ id: newId(), name: name.trim(), climbIds: [climb.id], createdAt: Date.now() });
+    await saveList({ id: newId(), name: name.trim(), climbIds: [climb.id], createdAt: Date.now() }).catch((e) => alert(e.message));
     setName('');
   };
 
@@ -251,6 +283,98 @@ function ListPicker({ climb, onClose }: { climb: Climb; onClose: () => void }) {
         <input placeholder="New list" value={name} onChange={(e) => setName(e.target.value)} />
         <button type="submit" className="btn" disabled={!name.trim()}>Add</button>
       </form>
+    </div>
+  );
+}
+
+/** Your tick (grade opinion, stars, note) plus everyone else's sends. */
+function TickSheet({ climb, catalog, stats, signedIn, onClose }: {
+  climb: Climb;
+  catalog: Catalog;
+  stats: TickStats;
+  signedIn: boolean;
+  onClose: () => void;
+}) {
+  const mine = stats.mine;
+  const [grade, setGrade] = useState(mine?.grade ?? climb.grade);
+  const [stars, setStars] = useState(mine?.stars ?? 0);
+  const [note, setNote] = useState(mine?.note ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const grades = catalog.gradeSystem(climb.gradeSystemId)?.grades ?? [];
+  const others = stats.ticks.filter((t) => t !== mine);
+
+  const run = async (f: () => Promise<void>) => {
+    setBusy(true);
+    setError('');
+    try {
+      await f();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="popover tick-sheet" role="dialog" aria-label="Ticks">
+      <div className="popover-head">
+        <strong>{mine ? 'Your tick' : 'Tick this climb'}</strong>
+        <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+          <Icon name="close" size={18} />
+        </button>
+      </div>
+      {signedIn ? (
+        <form className="stack" onSubmit={(e) => { e.preventDefault(); run(() => saveTick(climb.id, { grade, stars, note })); }}>
+          <label className="field">
+            Felt like
+            <select value={grade} onChange={(e) => setGrade(e.target.value)}>
+              <option value="">No opinion</option>
+              {grades.map((g) => <option key={g}>{g}</option>)}
+            </select>
+          </label>
+          <div className="field">
+            Quality
+            <div className="star-picker" role="radiogroup" aria-label="Quality">
+              {[1, 2, 3].map((n) => (
+                <button key={n} type="button" role="radio" aria-checked={stars === n} aria-label={`${n} star${n > 1 ? 's' : ''}`} onClick={() => setStars(stars === n ? 0 : n)}>
+                  <Icon name="star" size={26} fill={n <= stars ? 'currentColor' : 'none'} />
+                </button>
+              ))}
+            </div>
+          </div>
+          <textarea rows={2} placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+          {error && <p className="error">{error}</p>}
+          <div className="row-actions end">
+            {mine && (
+              <button type="button" className="btn ghost danger" disabled={busy} onClick={() => run(() => removeTick(climb.id))}>
+                Remove
+              </button>
+            )}
+            <button type="submit" className="btn primary" disabled={busy}>
+              <Icon name="check" size={18} /> {mine ? 'Update' : 'Tick it'}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <SignInPrompt what="tick climbs" />
+      )}
+      {others.length > 0 && (
+        <ul className="tick-list">
+          {others.map((t) => (
+            <li key={t.id}>
+              <div>
+                <strong>{t.userName}</strong>
+                <span className="muted small"> {new Date(t.date).toLocaleDateString()}</span>
+              </div>
+              <div className="muted small">
+                {[t.grade && `felt ${t.grade}`, t.stars > 0 && '★'.repeat(t.stars)].filter(Boolean).join(' · ')}
+              </div>
+              {t.note && <div className="small">{t.note}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

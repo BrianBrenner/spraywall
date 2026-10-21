@@ -61,6 +61,12 @@ export interface ImportSummary {
  * already here, so importing the same file twice is harmless.
  */
 export async function importAll(file: Blob, mode: ImportMode): Promise<ImportSummary> {
+  const { data, versions } = await readBackup(file);
+  return importLocal(data, versions, mode);
+}
+
+/** Unpack an export zip: its data plus the photos as blobs. */
+export async function readBackup(file: Blob) {
   const zip = await JSZip.loadAsync(file);
   const json = await zip.file('data.json')?.async('string');
   if (!json) throw new Error('Not a spray wall export: data.json is missing.');
@@ -76,7 +82,10 @@ export async function importAll(file: Blob, mode: ImportMode): Promise<ImportSum
       return { ...v, image: new Blob([await entry.async('arraybuffer')], { type }) };
     }),
   );
+  return { data, versions };
+}
 
+async function importLocal(data: ExportData, versions: WallVersion[], mode: ImportMode): Promise<ImportSummary> {
   const tables = [db.walls, db.versions, db.climbs, db.lists, db.gradeSystems, db.footRules, db.tags, db.settings];
   const summary: ImportSummary = { walls: 0, climbs: 0, lists: 0 };
   await db.transaction('rw', tables, async () => {

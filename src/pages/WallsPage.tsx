@@ -2,10 +2,12 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { PageHeader } from '../components/ui';
+import { usePermissions } from '../lib/permissions';
 import { db, latestVersion } from '../db';
 import { blobUrl } from '../lib/image';
 
 export function WallsPage() {
+  const { isOwner } = usePermissions();
   const walls = useLiveQuery(async () => {
     const walls = await db.walls.orderBy('createdAt').toArray();
     return Promise.all(
@@ -20,19 +22,24 @@ export function WallsPage() {
   return (
     <>
       <PageHeader title="Walls" large>
-        <Link className="btn primary" to="/walls/new">
-          <Icon name="plus" size={18} /> New wall
-        </Link>
+        {isOwner && (
+          <Link className="btn primary" to="/walls/new">
+            <Icon name="plus" size={18} /> New wall
+          </Link>
+        )}
       </PageHeader>
       <div className="page-body">
-        {walls?.length === 0 && (
-          <div className="empty">
-            <Icon name="wall" size={40} />
-            <h2>Add your wall</h2>
-            <p>Take a photo straight on, in good light, with the whole wall in frame.</p>
-            <Link className="btn primary" to="/walls/new">Add your wall</Link>
-          </div>
-        )}
+        {walls?.length === 0 &&
+          (isOwner ? (
+            <div className="empty">
+              <Icon name="wall" size={40} />
+              <h2>Add your wall</h2>
+              <p>Take a photo straight on, in good light, with the whole wall in frame.</p>
+              <Link className="btn primary" to="/walls/new">Add your wall</Link>
+            </div>
+          ) : (
+            <p className="empty">No walls yet.</p>
+          ))}
         <ul className="wall-grid">
           {walls?.map(({ wall, cover, climbCount }) => (
             <li key={wall.id}>

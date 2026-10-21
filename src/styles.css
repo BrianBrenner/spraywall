@@ -824,6 +824,68 @@ legend {
 }
 
 /* Narrower column, still left-aligned with the page title. */
+.invite-code {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.group.members {
+  margin-top: 12px;
+}
+
+/* Narrower column, still left-aligned with the page title. */
+.profile > * {
+  max-width: 720px;
+}
+
+.auth-card {
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 750;
+  font-size: 1.2rem;
+}
+
+.profile-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-text strong .badge {
+  margin-left: 8px;
+}
+
 .settings > * {
   max-width: 720px;
 }
@@ -1009,6 +1071,30 @@ legend {
 .climb-version {
   font-size: 0.75rem;
   color: var(--muted);
+}
+
+.tick-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.tick-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.tick-summary .sent {
+  color: #16a34a;
+  font-weight: 650;
+}
+
+.tick-summary .stars {
+  color: var(--star);
+  font-weight: 650;
 }
 
 /* ---------- Wall canvas & editors ---------- */
@@ -1396,6 +1482,50 @@ legend {
   background: #232327;
   border-color: #2a2a2f;
   color: #f4f4f5;
+}
+
+.icon-btn.sent {
+  color: #22c55e;
+}
+
+.tick-sheet .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 550;
+  color: var(--muted);
+}
+
+.climb-view .tick-sheet select,
+.climb-view .tick-sheet textarea {
+  background: #232327;
+  border-color: #2a2a2f;
+  color: #f4f4f5;
+}
+
+.star-picker {
+  display: flex;
+  gap: 4px;
+  color: var(--star);
+}
+
+.star-picker button {
+  border: none;
+  background: none;
+  color: inherit;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.tick-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .popover-head {

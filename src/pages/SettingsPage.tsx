@@ -5,11 +5,17 @@ import { PageHeader } from '../components/ui';
 import { db, newId, requestPersistence } from '../db';
 import { useCatalog, type Catalog } from '../lib/hooks';
 import { ensureThumbnails } from '../lib/thumbnail';
-import { exportAll, importAll, shareOrDownload, type ImportMode } from '../lib/transfer';
+import { getInvite, importToServer, listMembers, pushCatalog, removeMember, setInvite } from '../lib/mutations';
+import { usePermissions } from '../lib/permissions';
+import { exportAll, importAll, readBackup, shareOrDownload, type ImportMode } from '../lib/transfer';
 import type { FootRule, GradeSystem } from '../types';
+
+/** Tell the server after any change to grades, foot rules, tags or defaults. */
+const catalogChanged = () => pushCatalog().catch((e) => alert(`Couldn’t save to the server: ${e.message}`));
 
 export function SettingsPage() {
   const catalog = useCatalog();
+  const perms = usePermissions();
   const usage = useLiveQuery(async () => {
     const grades = new Map<string, number>();
     const rules = new Map<string, number>();
@@ -20,6 +26,14 @@ export function SettingsPage() {
     return { grades, rules };
   });
   if (!catalog || !usage) return null;
+  if (!perms.isOwner) {
+    return (
+      <>
+        <PageHeader title="Settings" large />
+        <p className="page-body empty">Only the wall owner manages settings.</p>
+      </>
+    );
+  }
 
   return (
     <>
@@ -28,7 +42,8 @@ export function SettingsPage() {
         <FootRules catalog={catalog} usage={usage.rules} />
         <Tags catalog={catalog} />
         <GradeSystems catalog={catalog} usage={usage.grades} />
-        <DataSection />
+        {perms.server && <Members />}
+        <DataSection server={perms.server} />
       </div>
     </>
   );
@@ -51,6 +66,7 @@ function FootRules({ catalog, usage }: { catalog: Catalog; usage: Map<string, nu
     if (!editing?.name.trim()) return;
     await db.footRules.put({ ...editing, name: editing.name.trim(), description: editing.description.trim() });
     setEditing(null);
+    catalogChanged();
   };
 
   return (
@@ -71,7 +87,7 @@ function FootRules({ catalog, usage }: { catalog: Catalog; usage: Map<string, nu
                 {f.description && <div className="muted small">{f.description}</div>}
               </div>
               {f.id !== catalog.defaultFootRuleId && (
-                <button type="button" className="btn ghost small" onClick={() => db.settings.update('app', { defaultFootRuleId: f.id })}>
+                <button type="button" className="btn ghost small" onClick={() => db.settings.update('app', { defaultFootRuleId: f.id }).then(catalogChanged)}>
                   Make default
                 </button>
               )}
@@ -84,7 +100,7 @@ function FootRules({ catalog, usage }: { catalog: Catalog; usage: Map<string, nu
                 aria-label={`Delete ${f.name}`}
                 disabled={!!usage.get(f.id) || f.id === catalog.defaultFootRuleId}
                 title={usage.get(f.id) ? 'In use by climbs' : undefined}
-                onClick={() => db.footRules.delete(f.id)}
+                onClick={() => db.footRules.delete(f.id).then(catalogChanged)}
               >
                 <Icon name="trash" size={18} />
               </button>
@@ -130,6 +146,7 @@ function Tags({ catalog }: { catalog: Catalog }) {
         c.tagIds = c.tagIds.filter((t) => t !== id);
       });
     });
+    catalogChanged();
   };
   return (
     <Section title="Tags">
@@ -149,6 +166,7 @@ function Tags({ catalog }: { catalog: Catalog }) {
           if (!name.trim()) return;
           await db.tags.add({ id: newId(), name: name.trim() });
           setName('');
+          catalogChanged();
         }}>
           <input placeholder="New tag" value={name} onChange={(e) => setName(e.target.value)} />
           <button type="submit" className="btn" disabled={!name.trim()}>Add</button>
@@ -167,6 +185,7 @@ function GradeSystems({ catalog, usage }: { catalog: Catalog; usage: Map<string,
     if (!editing.name.trim() || !grades.length) return;
     await db.gradeSystems.put({ ...editing, name: editing.name.trim(), grades });
     setEditing(null);
+    catalogChanged();
   };
 
   return (
@@ -184,7 +203,7 @@ function GradeSystems({ catalog, usage }: { catalog: Catalog; usage: Map<string,
               </div>
             </div>
             {catalog.gradeSystems.length > 1 && g.id !== catalog.defaultGradeSystemId && (
-              <button type="button" className="btn ghost small" onClick={() => db.settings.update('app', { defaultGradeSystemId: g.id })}>
+              <button type="button" className="btn ghost small" onClick={() => db.settings.update('app', { defaultGradeSystemId: g.id }).then(catalogChanged)}>
                 Make default
               </button>
             )}
@@ -197,7 +216,7 @@ function GradeSystems({ catalog, usage }: { catalog: Catalog; usage: Map<string,
                 className="icon-btn danger"
                 aria-label={`Delete ${g.name}`}
                 disabled={!!usage.get(g.id) || g.id === catalog.defaultGradeSystemId}
-                onClick={() => db.gradeSystems.delete(g.id)}
+                onClick={() => db.gradeSystems.delete(g.id).then(catalogChanged)}
               >
                 <Icon name="trash" size={18} />
               </button>
@@ -233,7 +252,7 @@ function GradeSystems({ catalog, usage }: { catalog: Catalog; usage: Map<string,
   );
 }
 
-function DataSection() {
+function DataSection({ server }: { server: boolean }) {
   const [status, setStatus] = useState('');
   const [mode, setMode] = useState<ImportMode>('merge');
   const [persisted, setPersisted] = useState<boolean | null>(null);
@@ -257,6 +276,27 @@ function DataSection() {
 
   const doImport = async (file: File | undefined) => {
     if (!file) return;
+    if (server) {
+      if (!confirm('Upload this backup’s walls, photos, climbs and lists to the shared server? Matching items are overwritten.')) return;
+      try {
+        const { data, versions } = await readBackup(file);
+        const settings = data.settings[0] ?? {};
+        const n = await importToServer(
+          {
+            walls: data.walls,
+            versions,
+            climbs: data.climbs,
+            lists: data.lists,
+            catalog: { gradeSystems: data.gradeSystems, footRules: data.footRules, tags: data.tags, settings },
+          },
+          setStatus,
+        );
+        setStatus(`Uploaded ${n} items to the server.`);
+      } catch (e) {
+        setStatus(`Import failed: ${(e as Error).message}`);
+      }
+      return;
+    }
     if (mode === 'replace' && !confirm('Replace ALL data on this device with the backup?')) return;
     setStatus('Importing…');
     try {
@@ -273,8 +313,9 @@ function DataSection() {
     <Section title="Backup & transfer">
       <div className="card stack">
         <p className="muted">
-          Everything is stored on this device only. Export a backup to move to another device (AirDrop works on iPad
-          and iPhone), then import it there.
+          {server
+            ? 'Walls and climbs live on the shared server. Export a copy any time, or import a backup made on a device before the server existed.'
+            : 'Everything is stored on this device only. Export a backup to move to another device (AirDrop works on iPad and iPhone), then import it there.'}
         </p>
         <div className="row-actions">
           <button type="button" className="btn primary" onClick={doExport}>
@@ -286,13 +327,15 @@ function DataSection() {
             </span>
             <input type="file" accept=".zip,application/zip" hidden onChange={(e) => { doImport(e.target.files?.[0]); e.target.value = ''; }} />
           </label>
-          <select className="compact" value={mode} onChange={(e) => setMode(e.target.value as ImportMode)} aria-label="Import mode">
-            <option value="merge">Merge with existing</option>
-            <option value="replace">Replace everything</option>
-          </select>
+          {!server && (
+            <select className="compact" value={mode} onChange={(e) => setMode(e.target.value as ImportMode)} aria-label="Import mode">
+              <option value="merge">Merge with existing</option>
+              <option value="replace">Replace everything</option>
+            </select>
+          )}
         </div>
         {status && <p className="status">{status}</p>}
-        <p className="muted small">
+        {!server && <p className="muted small">
           {usage}{' '}
           {persisted === true && 'Storage is protected from automatic clean-up.'}
           {persisted === false && (
@@ -304,8 +347,69 @@ function DataSection() {
               </button>
             </>
           )}
-        </p>
+        </p>}
       </div>
+    </Section>
+  );
+}
+
+/** Owner: the invite code friends use to sign up, and who has an account. */
+function Members() {
+  const [code, setCode] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [members, setMembers] = useState<Awaited<ReturnType<typeof listMembers>> | null>(null);
+  const [error, setError] = useState('');
+
+  const load = () => {
+    getInvite().then((r) => setCode(r.code)).catch((e) => setError(e.message));
+    listMembers().then(setMembers).catch((e) => setError(e.message));
+  };
+  useEffect(load, []);
+
+  const change = async () => {
+    try {
+      const r = await setInvite(draft);
+      setCode(r.code);
+      setDraft('');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const remove = async (m: { username: string; name: string }) => {
+    if (!confirm(`Remove ${m.name || 'this person'}? They’ll be signed out and need the invite code to rejoin. Their climbs and ticks stay.`)) return;
+    await removeMember(m.username).catch((e) => setError(e.message));
+    load();
+  };
+
+  return (
+    <Section title="Friends" hint="Anyone with the invite code can make an account to set and tick climbs. Changing it doesn’t affect existing accounts.">
+      <div className="card stack">
+        <div>
+          <div className="muted small">Invite code</div>
+          <div className="invite-code">{code ?? '…'}</div>
+        </div>
+        <form className="inline-form" onSubmit={(e) => { e.preventDefault(); change(); }}>
+          <input placeholder="New invite code" value={draft} onChange={(e) => setDraft(e.target.value)} />
+          <button type="submit" className="btn" disabled={draft.trim().length < 4}>Change</button>
+        </form>
+        {error && <p className="error">{error}</p>}
+      </div>
+      {members && (
+        <ul className="group members">
+          {members.map((m) => (
+            <li key={m.username} className="group-row">
+              <div className="group-row-main">
+                <div>{m.name || 'No name'}</div>
+                <div className="muted small">{m.email}</div>
+              </div>
+              <button type="button" className="icon-btn danger" aria-label={`Remove ${m.name}`} onClick={() => remove(m)}>
+                <Icon name="trash" size={18} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </Section>
   );
 }

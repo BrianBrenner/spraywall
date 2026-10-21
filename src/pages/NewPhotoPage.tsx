@@ -1,13 +1,20 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PageHeader } from '../components/ui';
+import { OwnerOnly, PageHeader } from '../components/ui';
+import { usePermissions } from '../lib/permissions';
 import { db, latestVersion, newId, requestPersistence } from '../db';
+import { createVersion, saveWall } from '../lib/mutations';
 import { scaleShape } from '../lib/geometry';
 import { prepareWallImage } from '../lib/image';
 
 /** Create a wall from a photo, or add a new photo (version) to an existing wall. */
 export function NewPhotoPage() {
+  const { isOwner } = usePermissions();
+  return isOwner ? <NewPhoto /> : <OwnerOnly />;
+}
+
+function NewPhoto() {
   const { wallId } = useParams();
   const navigate = useNavigate();
   const wall = useLiveQuery(() => (wallId ? db.walls.get(wallId) : undefined), [wallId]);
@@ -51,9 +58,9 @@ export function NewPhotoPage() {
           }))
         : [];
     const versionId = newId();
-    await db.transaction('rw', [db.walls, db.versions], async () => {
-      if (!wallId) await db.walls.add({ id, name: name.trim() || 'My wall', createdAt: now });
-      await db.versions.add({
+    try {
+      if (!wallId) await saveWall({ id, name: name.trim() || 'My wall', createdAt: now });
+      await createVersion({
         id: versionId,
         wallId: id,
         number: (previous?.number ?? 0) + 1,
@@ -63,7 +70,11 @@ export function NewPhotoPage() {
         holds,
         createdAt: now,
       });
-    });
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+      return;
+    }
     requestPersistence();
     navigate(`/versions/${versionId}/holds`, { replace: true });
   };

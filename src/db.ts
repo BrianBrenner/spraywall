@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
+import { backend } from './lib/config';
 import type {
   AppSettings,
   Climb,
@@ -6,11 +7,13 @@ import type {
   FootRule,
   GradeSystem,
   Tag,
+  Tick,
   Wall,
   WallVersion,
 } from './types';
 
-export const db = new Dexie('spraywall') as Dexie & {
+// Server mode keeps its cache apart from any walls made locally before the server existed.
+export const db = new Dexie(backend ? 'spraywall-cloud' : 'spraywall') as Dexie & {
   walls: EntityTable<Wall, 'id'>;
   versions: EntityTable<WallVersion, 'id'>;
   climbs: EntityTable<Climb, 'id'>;
@@ -19,6 +22,7 @@ export const db = new Dexie('spraywall') as Dexie & {
   footRules: EntityTable<FootRule, 'id'>;
   tags: EntityTable<Tag, 'id'>;
   settings: EntityTable<AppSettings, 'id'>;
+  ticks: EntityTable<Tick, 'id'>;
 };
 
 db.version(1).stores({
@@ -81,6 +85,9 @@ db.version(5).upgrade(async (tx) => {
   const systems = tx.table('gradeSystems');
   if (await systems.get(COMBINED_ID)) await systems.put(DEFAULT_GRADE_SYSTEMS[0]);
 });
+
+// v6: ticks (server mode).
+db.version(6).stores({ ticks: 'id, climbId, userId' });
 
 export const newId = () => crypto.randomUUID();
 
@@ -154,9 +161,11 @@ export async function latestVersion(wallId: string) {
   return db.versions.where('[wallId+number]').between([wallId, Dexie.minKey], [wallId, Dexie.maxKey]).last();
 }
 
+/** Local-cache deletes. Pages go through lib/mutations, which also tells the server. */
 export async function deleteClimbs(ids: string[]) {
-  await db.transaction('rw', [db.climbs, db.lists], async () => {
+  await db.transaction('rw', [db.climbs, db.lists, db.ticks], async () => {
     await db.climbs.bulkDelete(ids);
+    await db.ticks.where('climbId').anyOf(ids).delete();
     const gone = new Set(ids);
     await db.lists.toCollection().modify((l) => {
       l.climbIds = l.climbIds.filter((id) => !gone.has(id));

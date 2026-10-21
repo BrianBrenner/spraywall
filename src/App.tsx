@@ -7,6 +7,8 @@ import { HoldEditorPage } from './pages/HoldEditorPage';
 import { ListPage } from './pages/ListPage';
 import { ListsPage } from './pages/ListsPage';
 import { NewPhotoPage } from './pages/NewPhotoPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { usePermissions } from './lib/permissions';
 import { SettingsPage } from './pages/SettingsPage';
 import { WallPage } from './pages/WallPage';
 import { WallsPage } from './pages/WallsPage';
@@ -22,6 +24,7 @@ export function App() {
           <Route path="/lists" element={<ListsPage />} />
           <Route path="/lists/:listId" element={<ListPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Route>
         {/* Full-screen tools without the tab bar. */}
         <Route path="/walls/new" element={<NewPhotoPage />} />
@@ -37,6 +40,7 @@ export function App() {
 }
 
 function TabLayout() {
+  const { server, isOwner } = usePermissions();
   return (
     <div className="tab-layout">
       <main className="tab-content">
@@ -51,10 +55,18 @@ function TabLayout() {
           <Icon name="bookmark" />
           Lists
         </NavLink>
-        <NavLink to="/settings">
-          <Icon name="settings" />
-          Settings
-        </NavLink>
+        {server && (
+          <NavLink to="/profile">
+            <Icon name="user" />
+            Profile
+          </NavLink>
+        )}
+        {isOwner && (
+          <NavLink to="/settings">
+            <Icon name="settings" />
+            Settings
+          </NavLink>
+        )}
       </nav>
     </div>
   );
