@@ -19,7 +19,8 @@ interface Filters {
   footRuleId: string;
   tagIds: string[];
   benchmarksOnly: boolean;
-  ticked: 'any' | 'yes' | 'no';
+  /** Hide climbs you've already sent. */
+  hideSent: boolean;
   setter: string;
   sort: 'grade' | 'newest' | 'oldest' | 'name' | 'rating' | 'popular';
 }
@@ -41,7 +42,7 @@ const DEFAULT_FILTERS: Filters = {
   footRuleId: '',
   tagIds: [],
   benchmarksOnly: false,
-  ticked: 'any',
+  hideSent: false,
   setter: '',
   sort: 'grade',
 };
@@ -84,7 +85,7 @@ export function WallPage() {
       if (filters.benchmarksOnly && !c.benchmark) return false;
       // Setter is the credited name (anyone, account or not), not who logged it.
       if (filters.setter && (c.setterName ?? '').trim().toLowerCase() !== filters.setter.toLowerCase()) return false;
-      if (filters.ticked !== 'any' && perms.signedIn && !!stats(c).mine !== (filters.ticked === 'yes')) return false;
+      if (filters.hideSent && perms.signedIn && stats(c).mine) return false;
       return true;
     });
     const byGrade = (a: Climb, b: Climb) =>
@@ -110,7 +111,7 @@ export function WallPage() {
   const activeFilterCount =
     (filters.minGrade || filters.maxGrade ? 1 : 0) + (filters.footRuleId ? 1 : 0) +
     filters.tagIds.length + (filters.benchmarksOnly ? 1 : 0) +
-    (filters.setter ? 1 : 0) + (filters.ticked !== 'any' && perms.signedIn ? 1 : 0);
+    (filters.setter ? 1 : 0) + (filters.hideSent && perms.signedIn ? 1 : 0);
   const setters = [...new Map(climbs.filter((c) => c.setterName?.trim()).map((c) => [c.setterName!.trim().toLowerCase(), c.setterName!.trim()])).values()].sort((a, b) =>
     a.localeCompare(b),
   );
@@ -276,18 +277,8 @@ export function WallPage() {
                 </select>
               </label>
             </div>
-            {(perms.server || setters.length > 0) && (
+            {setters.length > 0 && (
               <div className="row">
-                {perms.server && perms.signedIn && (
-                  <label>
-                    Your sends
-                    <select value={filters.ticked} onChange={(e) => set({ ticked: e.target.value as Filters['ticked'] })}>
-                      <option value="any">All climbs</option>
-                      <option value="no">Not ticked yet</option>
-                      <option value="yes">Ticked</option>
-                    </select>
-                  </label>
-                )}
                 <label>
                   Setter
                   <select value={filters.setter} onChange={(e) => set({ setter: e.target.value })}>
@@ -298,6 +289,11 @@ export function WallPage() {
               </div>
             )}
             <div className="chips">
+              {perms.server && perms.signedIn && (
+                <button type="button" className={`chip ${filters.hideSent ? 'on' : ''}`} aria-pressed={filters.hideSent} onClick={() => set({ hideSent: !filters.hideSent })}>
+                  <Icon name="check" size={14} /> Hide sent
+                </button>
+              )}
               <button
                 type="button"
                 className={`chip ${filters.benchmarksOnly ? 'on' : ''}`}

@@ -1353,7 +1353,7 @@ legend {
 .tick-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: 4px 6px;
   font-size: 0.78rem;
   color: var(--muted);
 }
@@ -1362,6 +1362,11 @@ legend {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+
+.tick-summary .sep {
+  margin-right: 6px;
+  opacity: 0.6;
 }
 
 .tick-summary .sent {

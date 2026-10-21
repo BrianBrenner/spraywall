@@ -80,16 +80,24 @@ export function GradeChip({ grade }: { grade: string }) {
   return <span className="grade-chip">{grade || '—'}</span>;
 }
 
-/** Sends, rating, consensus grade and setter, when there's anything to show. */
+/** Your send first (what's left to do matters most), then rating, send count and consensus grade. The setter lives in Info. */
 export function TickSummary({ climb, stats }: { climb: Climb; stats?: TickStats }) {
   const parts: ReactNode[] = [];
   if (stats?.mine) parts.push(<span key="mine" className="sent"><Icon name="check" size={13} /> Sent</span>);
   if (stats && stats.stars > 0) parts.push(<span key="stars" className="stars"><Icon name="star" size={12} fill="currentColor" /> {stats.stars.toFixed(1)}</span>);
   if (stats?.count) parts.push(<span key="count">{stats.count} {stats.count === 1 ? 'send' : 'sends'}</span>);
   if (stats?.consensus && stats.consensus !== climb.grade) parts.push(<span key="cons">feels {stats.consensus}</span>);
-  if (climb.setterName) parts.push(<span key="by">by {climb.setterName}</span>);
   if (!parts.length) return null;
-  return <div className="tick-summary">{parts}</div>;
+  return (
+    <div className="tick-summary">
+      {parts.map((p, i) => (
+        <span key={i}>
+          {i > 0 && <span className="sep">·</span>}
+          {p}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export function ClimbRow({ climb, catalog, stats, versionLabel, onOpen, children }: {
