@@ -7,10 +7,10 @@ import { OwnerOnly, PageHeader } from '../components/ui';
 import { usePermissions } from '../lib/permissions';
 import { useViewScale, WallCanvas } from '../components/WallCanvas';
 import { db, newId } from '../db';
-import { detectHolds, detectionToShape, newDetections, type Detection } from '../lib/detect';
+import { detectHolds, detectionToShape, detectorReady, newDetections, type Detection } from '../lib/detect';
 import { holdAt, shapePath, translateShape } from '../lib/geometry';
 import { saveHolds } from '../lib/mutations';
-import { HoldTracer, refineOutlines } from '../lib/sam';
+import { HoldTracer, preloadSam, refineOutlines, samReady } from '../lib/sam';
 import { useHistory, useUndoKeys } from '../lib/history';
 import { blobUrl } from '../lib/image';
 import type { Hold, HoldShape, WallVersion } from '../types';
@@ -32,7 +32,7 @@ function HoldEditorRoute() {
 
 type DetectionState =
   | { status: 'idle' }
-  | { status: 'running' }
+  | { status: 'running'; firstRun: boolean }
   | { status: 'error'; message: string }
   | { status: 'message'; message: string }
   | { status: 'refining'; done: number; total: number }
@@ -133,7 +133,7 @@ function HoldEditor({ version }: { version: WallVersion }) {
   const runDetection = async () => {
     setDraft([]);
     setSelectedId(null);
-    setDetection({ status: 'running' });
+    setDetection({ status: 'running', firstRun: !detectorReady() });
     try {
       const detections = await detectHolds(version.image, version.width, version.height);
       setDetection({ status: 'review', detections, minScore: 0.5, rejected: new Set() });
@@ -165,10 +165,10 @@ function HoldEditor({ version }: { version: WallVersion }) {
   };
 
   const tracer = useMemo(() => new HoldTracer(version.image, version.width, version.height), [version.image, version.width, version.height]);
-  const [tracing, setTracing] = useState(false);
+  const [tracing, setTracing] = useState<{ x: number; y: number; firstRun: boolean } | null>(null);
   /** Trace a new hold, or re-trace `existing` in place (same id, so climbs keep it). */
   const traceAt = async (x: number, y: number, existing?: Hold) => {
-    setTracing(true);
+    setTracing({ x, y, firstRun: !samReady() });
     try {
       const shape = await tracer.trace(x, y, existing?.shape);
       if (shape) {
@@ -185,9 +185,24 @@ function HoldEditor({ version }: { version: WallVersion }) {
     } catch (e) {
       setDetection({ status: 'error', message: (e as Error).message || 'Tracing failed.' });
     } finally {
-      setTracing(false);
+      setTracing(null);
     }
   };
+
+  // One full-screen "working" message for whichever slow step is running.
+  const busyMessage = tracing
+    ? tracing.firstRun
+      ? 'Loading the outline model (first time only)…'
+      : 'Outlining hold…'
+    : detection.status === 'running'
+      ? detection.firstRun
+        ? 'Loading the hold detector (first time only)…'
+        : 'Finding holds…'
+      : detection.status === 'refining'
+        ? detection.done === 0 && !samReady()
+          ? 'Loading the outline model (first time only)…'
+          : `Refining outlines… ${detection.done} / ${detection.total}`
+        : null;
 
   const acceptSuggestions = () => {
     // One history step, so a single Undo removes the whole batch.
@@ -281,6 +296,8 @@ function HoldEditor({ version }: { version: WallVersion }) {
 
   const switchTool = (t: Tool) => {
     if (draft.length) finishPolygon();
+    // Get the outline model loading while you aim at a hold.
+    if (t === 'trace') preloadSam();
     setTool(t);
   };
 
@@ -293,38 +310,42 @@ function HoldEditor({ version }: { version: WallVersion }) {
         </Link>
         <Link className="btn primary" to={`/walls/${version.wallId}`}>Done</Link>
       </PageHeader>
-      <WallCanvas
-        image={blobUrl(version.image)}
-        width={version.width}
-        height={version.height}
-        onTap={onTap}
-        onDragStart={onDragStart}
-        onDragMove={onDragMove}
-        onDragEnd={() => (drag.current = null)}
-      >
-        {holds.map((h) => (
-          <HoldOutline
-            key={h.id}
-            shape={h.shape}
-            color={h.id === selectedId ? '#fb923c' : usage?.get(h.id) ? '#ffffff' : '#a5f3fc'}
-            fill={h.id === selectedId ? 'rgba(251,146,60,0.25)' : 'none'}
-          />
-        ))}
-        {selected && <Handles hold={selected} />}
-        {draft.length > 0 && <PolygonDraft points={draft} />}
-        {suggestions.map((d, i) => (
-          <HoldOutline key={i} shape={detectionToShape(d)} color="#4ade80" width={2} strokeDasharray="5 4" />
-        ))}
-      </WallCanvas>
-      {detection.status !== 'idle' && (
+      <div className="canvas-wrap">
+        <WallCanvas
+          image={blobUrl(version.image)}
+          width={version.width}
+          height={version.height}
+          onTap={onTap}
+          onDragStart={onDragStart}
+          onDragMove={onDragMove}
+          onDragEnd={() => (drag.current = null)}
+        >
+          {holds.map((h) => (
+            <HoldOutline
+              key={h.id}
+              shape={h.shape}
+              color={h.id === selectedId ? '#fb923c' : usage?.get(h.id) ? '#ffffff' : '#a5f3fc'}
+              fill={h.id === selectedId ? 'rgba(251,146,60,0.25)' : 'none'}
+            />
+          ))}
+          {selected && <Handles hold={selected} />}
+          {draft.length > 0 && <PolygonDraft points={draft} />}
+          {suggestions.map((d, i) => (
+            <HoldOutline key={i} shape={detectionToShape(d)} color="#4ade80" width={2} strokeDasharray="5 4" />
+          ))}
+          {tracing && <TapPulse x={tracing.x} y={tracing.y} />}
+        </WallCanvas>
+        {busyMessage && (
+          <div className="busy-overlay" role="status" aria-live="polite">
+            <div className="busy-card">
+              <span className="spinner" aria-hidden="true" />
+              {busyMessage}
+            </div>
+          </div>
+        )}
+      </div>
+      {(detection.status === 'error' || detection.status === 'message' || detection.status === 'review') && (
         <div className="detect-panel">
-          {detection.status === 'running' && <span>Finding holds… the first run downloads the model (14 MB).</span>}
-          {detection.status === 'refining' && (
-            <span>
-              Refining outlines… {detection.done} / {detection.total}
-              {detection.done === 0 && ' (the first run downloads the model, 14 MB)'}
-            </span>
-          )}
           {(detection.status === 'error' || detection.status === 'message') && (
             <>
               <span className={detection.status === 'error' ? 'error' : ''}>{detection.message}</span>
@@ -367,7 +388,7 @@ function HoldEditor({ version }: { version: WallVersion }) {
           <ToolButton tool="select" current={tool} onPick={switchTool} icon="pointer" label="Select" />
           <ToolButton tool="circle" current={tool} onPick={switchTool} icon="circle" label="Circle" />
           <ToolButton tool="polygon" current={tool} onPick={switchTool} icon="shape" label="Shape" />
-          <ToolButton tool="trace" current={tool} onPick={switchTool} icon="trace" label={tracing ? 'Tracing…' : 'Trace'} />
+          <ToolButton tool="trace" current={tool} onPick={switchTool} icon="trace" label="Trace" />
           <ToolButton tool="moveAll" current={tool} onPick={switchTool} icon="move" label="Move all" />
         </div>
         <div className="toolbar-group">
@@ -458,6 +479,17 @@ function PolygonDraft({ points }: { points: [number, number][] }) {
         <circle key={i} cx={x} cy={y} r={(i === 0 ? 12 : 6) / s} fill={i === 0 ? 'white' : '#fb923c'} stroke="#fb923c" strokeWidth={2} vectorEffect="non-scaling-stroke" data-close={i === 0 ? '' : undefined} />
       ))}
       {points.length >= 3 && <path d={shapePath({ type: 'polygon', points })} fill="none" stroke="#fb923c" strokeDasharray="4 4" strokeWidth={1} vectorEffect="non-scaling-stroke" />}
+    </g>
+  );
+}
+
+/** Pulsing ring where you tapped, while that hold is being outlined. */
+function TapPulse({ x, y }: { x: number; y: number }) {
+  const s = useViewScale();
+  return (
+    <g pointerEvents="none">
+      <circle className="tap-pulse" cx={x} cy={y} r={16 / s} fill="none" stroke="#fb923c" strokeWidth={3} vectorEffect="non-scaling-stroke" />
+      <circle cx={x} cy={y} r={5 / s} fill="#fb923c" />
     </g>
   );
 }

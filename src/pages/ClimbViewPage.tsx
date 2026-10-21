@@ -30,6 +30,8 @@ export function ClimbViewPage() {
   // One popover at a time.
   const [popover, setPopover] = useState<'lists' | 'tags' | 'ticks' | null>(null);
   const togglePopover = (p: 'lists' | 'tags' | 'ticks') => setPopover((cur) => (cur === p ? null : p));
+  // Moving to another climb closes whatever panel was open.
+  useEffect(() => setPopover(null), [climbId]);
   const perms = usePermissions();
   const tickStats = useTickStats((id) => catalog?.gradeSystem(id));
   const [showNotes, setShowNotes] = useState(true);
@@ -325,7 +327,7 @@ function TickSheet({ climb, catalog, stats, signedIn, onClose }: {
         </button>
       </div>
       {signedIn ? (
-        <form className="stack" onSubmit={(e) => { e.preventDefault(); run(() => saveTick(climb.id, { grade, stars, note })); }}>
+        <form className="stack" onSubmit={(e) => { e.preventDefault(); run(() => saveTick(climb.id, { grade, stars, note }).then(onClose)); }}>
           <label className="field">
             Felt like
             <select value={grade} onChange={(e) => setGrade(e.target.value)}>
@@ -347,7 +349,7 @@ function TickSheet({ climb, catalog, stats, signedIn, onClose }: {
           {error && <p className="error">{error}</p>}
           <div className="row-actions end">
             {mine && (
-              <button type="button" className="btn ghost danger" disabled={busy} onClick={() => run(() => removeTick(climb.id))}>
+              <button type="button" className="btn ghost danger" disabled={busy} onClick={() => run(() => removeTick(climb.id).then(onClose))}>
                 Remove
               </button>
             )}

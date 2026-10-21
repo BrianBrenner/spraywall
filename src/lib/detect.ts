@@ -60,6 +60,10 @@ export function newDetections(detections: Detection[], holds: Hold[]): Detection
 }
 
 let session: Promise<InferenceSession> | null = null;
+let loaded = false;
+
+/** Whether the detector model is already loaded. */
+export const detectorReady = () => loaded;
 
 function getSession() {
   session ??= (async () => {
@@ -71,11 +75,11 @@ function getSession() {
       return r.arrayBuffer();
     });
     const providers = 'gpu' in navigator ? ['webgpu', 'wasm'] : ['wasm'];
-    try {
-      return await ort.InferenceSession.create(model, { executionProviders: providers });
-    } catch {
-      return ort.InferenceSession.create(model, { executionProviders: ['wasm'] });
-    }
+    const created = await ort.InferenceSession.create(model, { executionProviders: providers }).catch(() =>
+      ort.InferenceSession.create(model, { executionProviders: ['wasm'] }),
+    );
+    loaded = true;
+    return created;
   })();
   session.catch(() => (session = null));
   return session;

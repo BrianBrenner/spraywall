@@ -9,6 +9,16 @@ const base = `${import.meta.env.BASE_URL}models/`;
 
 let sessions: Promise<{ encoder: InferenceSession; decoder: InferenceSession; Tensor: typeof import('onnxruntime-web').Tensor }> | null = null;
 
+let loaded = false;
+
+/** Whether the outline model is already loaded (so the next step is quick). */
+export const samReady = () => loaded;
+
+/** Start downloading and loading the outline model in the background. */
+export function preloadSam() {
+  getSam().catch(() => {});
+}
+
 function getSam() {
   sessions ??= (async () => {
     const ort = await importFresh(() => import('onnxruntime-web/webgpu'));
@@ -20,6 +30,7 @@ function getSam() {
       return ort.InferenceSession.create(await r.arrayBuffer(), { executionProviders: ['wasm'] });
     };
     const [encoder, decoder] = await Promise.all([load('sam-encoder.onnx'), load('sam-decoder.onnx')]);
+    loaded = true;
     return { encoder, decoder, Tensor: ort.Tensor };
   })();
   sessions.catch(() => (sessions = null));

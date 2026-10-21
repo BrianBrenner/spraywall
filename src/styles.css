@@ -1427,6 +1427,71 @@ legend {
   }
 }
 
+.canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* Covers the wall while a slow step runs, so stray taps don't queue up. */
+.busy-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  touch-action: none;
+}
+
+.busy-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 40px);
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 550;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  font-variant-numeric: tabular-nums;
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  border: 3px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tap-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: tap-pulse 1s ease-out infinite;
+}
+
+@keyframes tap-pulse {
+  from {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
 .detect-panel {
   display: flex;
   flex-wrap: wrap;
