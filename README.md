@@ -46,6 +46,8 @@ Without a server the app is local-only: everything stays on one device. With the
 
 Friends make an account (name, email, password) with the **invite code**; the Cognito pre sign-up hook rejects anything else and confirms valid sign-ups on the spot. The owner is whoever signs up with the owner email given at deploy time. Access rules live in `infra/lambda/core.ts` (tested in `core.test.ts`).
 
+**Rate limits:** API Gateway caps the API at 10 requests/second (bursts of 25), and each friend can create at most 50 climbs and 200 ticks in any 24 hours (edits don't count; the owner is exempt). Limits live in `infra/lib/stack.ts` and `infra/lambda/core.ts`.
+
 **AWS pieces** (`infra/lib/stack.ts`, one CloudFormation stack in us-east-1): Cognito user pool, API Gateway HTTP API (verifies sign-in tokens) → one Lambda → DynamoDB (on-demand, point-in-time recovery), and an S3 bucket behind CloudFront for wall photos. Data and photos are kept if the stack is deleted.
 
 ### Deploying (from a computer with your personal AWS profile)
@@ -73,4 +75,4 @@ Sign up as `owner@example.com` with invite code `crimp` to be the owner; any oth
 
 ## Roadmap
 
-- Phase 3: wrap with Capacitor for the App Store / Play Store. The detector is AGPL-3.0, which needs resolving before a closed-source store release.
+- Not planned: an App Store / Play Store app. The Home Screen web app covers it. If that changes, wrapping with Capacitor is the route, and the AGPL-3.0 hold detector would need replacing before a closed-source store release.
