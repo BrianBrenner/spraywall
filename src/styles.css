@@ -636,6 +636,31 @@ h1 .badge,
   width: auto;
 }
 
+.update-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(76px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 16px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+.update-bar .icon-btn {
+  width: 32px;
+  height: 32px;
+  color: inherit;
+}
+
 .sync-banner {
   display: flex;
   align-items: center;

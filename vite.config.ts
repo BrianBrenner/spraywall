@@ -8,7 +8,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // Ask before switching to a new version (src/lib/pwa.ts), so an update never interrupts an edit.
+      registerType: 'prompt',
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       workbox: {
         // The ML runtime and model are big and only needed for hold detection:

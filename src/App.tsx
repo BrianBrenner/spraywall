@@ -11,6 +11,7 @@ import { NewPhotoPage } from './pages/NewPhotoPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { pull, useSyncError } from './lib/mutations';
 import { usePermissions } from './lib/permissions';
+import { applyUpdate, useUpdateAvailable } from './lib/pwa';
 import { SettingsPage } from './pages/SettingsPage';
 import { WallPage } from './pages/WallPage';
 import { WallsPage } from './pages/WallsPage';
@@ -19,6 +20,7 @@ import { WallsPage } from './pages/WallsPage';
 export function App() {
   return (
     <HashRouter>
+      <UpdateBar />
       <Routes>
         <Route element={<TabLayout />}>
           <Route path="/" element={<WallsPage />} />
@@ -92,6 +94,24 @@ function SyncBanner() {
       </span>
       <button type="button" className="btn small" disabled={busy} onClick={retry}>
         {busy ? 'Retrying…' : 'Retry'}
+      </button>
+    </div>
+  );
+}
+
+/** "New version available" bar, on every screen, until tapped or dismissed. */
+function UpdateBar() {
+  const available = useUpdateAvailable();
+  const [dismissed, setDismissed] = useState(false);
+  if (!available || dismissed) return null;
+  return (
+    <div className="update-bar" role="status">
+      <span>New version available</span>
+      <button type="button" className="btn small primary" onClick={() => applyUpdate()}>
+        Update
+      </button>
+      <button type="button" className="icon-btn" aria-label="Later" onClick={() => setDismissed(true)}>
+        <Icon name="close" size={16} />
       </button>
     </div>
   );
