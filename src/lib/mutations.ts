@@ -3,6 +3,7 @@
  * Local mode writes straight to IndexedDB. Server mode saves to the API first and
  * then updates the local cache, so screens (which read the cache) stay simple.
  */
+import { useSyncExternalStore } from 'react';
 import { db, deleteClimbs, deleteVersion as deleteVersionLocal, deleteWall as deleteWallLocal } from '../db';
 import type { AppSettings, Climb, ClimbList, FootRule, GradeSystem, Hold, Tag, Tick, Wall, WallVersion } from '../types';
 import { currentSession, idToken, setOwner } from './auth';
@@ -44,10 +45,35 @@ interface State {
 
 let pulling: Promise<void> | null = null;
 
+// Last refresh failure, shown as a banner with Retry instead of a silently empty app.
+let syncError: string | null = null;
+const syncListeners = new Set<() => void>();
+const setSyncError = (e: string | null) => {
+  syncError = e;
+  syncListeners.forEach((l) => l());
+};
+
+export function useSyncError() {
+  return useSyncExternalStore(
+    (l) => {
+      syncListeners.add(l);
+      return () => syncListeners.delete(l);
+    },
+    () => syncError,
+  );
+}
+
 /** Refresh the local cache from the server (no-op in local mode). */
 export function pull(): Promise<void> {
   if (!backend) return Promise.resolve();
-  pulling ??= doPull().finally(() => (pulling = null));
+  pulling ??= doPull()
+    .then(() => setSyncError(null))
+    .catch((e) => {
+      console.warn('Couldn’t refresh from the server', e);
+      setSyncError(navigator.onLine ? (e as Error).message || 'Something went wrong.' : 'You’re offline.');
+      throw e;
+    })
+    .finally(() => (pulling = null));
   return pulling;
 }
 
@@ -60,8 +86,8 @@ async function doPull() {
     state.versions.map(async (v) => {
       const old = cachedVersions.get(v.id);
       if (old?.photoUrl === v.photoUrl && old.image) return { ...v, image: old.image };
-      const res = await fetch(v.photoUrl);
-      if (!res.ok) throw new Error('Couldn’t download a wall photo.');
+      const res = await fetch(v.photoUrl).catch(() => null);
+      if (!res?.ok) throw new Error('Couldn’t download a wall photo.');
       return { ...v, image: await res.blob() };
     }),
   );

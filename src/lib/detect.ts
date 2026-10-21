@@ -1,6 +1,7 @@
 import type { InferenceSession } from 'onnxruntime-web';
 import type { Hold, HoldShape } from '../types';
 import { pointInShape, shapeCenter } from './geometry';
+import { importFresh } from './appUpdate';
 import { loadImage, makeCanvas } from './image';
 
 /** Model input is a square letterboxed image of this size. */
@@ -63,7 +64,7 @@ let session: Promise<InferenceSession> | null = null;
 function getSession() {
   session ??= (async () => {
     // Loaded on demand: the runtime and model are large and most visits never detect.
-    const ort = await import('onnxruntime-web/webgpu');
+    const ort = await importFresh(() => import('onnxruntime-web/webgpu'));
     ort.env.wasm.numThreads = 1; // Threads need cross-origin isolation, which a static host won't give us.
     const model = await fetch(MODEL_URL).then((r) => {
       if (!r.ok) throw new Error(`Couldn't download the hold model (${r.status}).`);
@@ -83,7 +84,7 @@ function getSession() {
 /** Run the hold detector on a wall photo. Coordinates in the result are photo pixels. */
 export async function detectHolds(image: Blob, width: number, height: number): Promise<Detection[]> {
   const [sess, img] = await Promise.all([getSession(), loadImage(image)]);
-  const ort = await import('onnxruntime-web/webgpu');
+  const ort = await importFresh(() => import('onnxruntime-web/webgpu'));
 
   const scale = SIZE / Math.max(width, height);
   const { canvas, ctx } = makeCanvas(SIZE, SIZE);

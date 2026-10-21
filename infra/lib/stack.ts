@@ -46,13 +46,27 @@ export class SprayWallStack extends Stack {
       lifecycleRules: [{ noncurrentVersionExpiration: Duration.days(90) }],
     });
 
+    // The app downloads photos with fetch() and draws them on canvases, which needs CORS.
+    // The managed "SimpleCORS" policy leaves the header off whenever the request carries a
+    // header outside its allow list, and browsers always send one (e.g. `Priority`), so
+    // allow any request header.
+    const photoCors = new cloudfront.ResponseHeadersPolicy(this, 'PhotoCors', {
+      corsBehavior: {
+        accessControlAllowOrigins: ['*'],
+        accessControlAllowHeaders: ['*'],
+        accessControlAllowMethods: ['GET', 'HEAD'],
+        accessControlAllowCredentials: false,
+        accessControlMaxAge: Duration.days(1),
+        originOverride: true,
+      },
+    });
+
     const cdn = new cloudfront.Distribution(this, 'PhotoCdn', {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(photos),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-        // The app draws photos onto canvases (thumbnails, detection), which needs CORS.
-        responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS,
+        responseHeadersPolicy: photoCors,
       },
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
     });

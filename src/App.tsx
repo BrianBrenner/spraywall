@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { HashRouter, NavLink, Outlet, Route, Routes } from 'react-router-dom';
 import { Icon } from './components/Icon';
 import { ClimbEditorPage } from './pages/ClimbEditorPage';
@@ -8,6 +9,7 @@ import { ListPage } from './pages/ListPage';
 import { ListsPage } from './pages/ListsPage';
 import { NewPhotoPage } from './pages/NewPhotoPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { pull, useSyncError } from './lib/mutations';
 import { usePermissions } from './lib/permissions';
 import { SettingsPage } from './pages/SettingsPage';
 import { WallPage } from './pages/WallPage';
@@ -44,6 +46,7 @@ function TabLayout() {
   return (
     <div className="tab-layout">
       <main className="tab-content">
+        <SyncBanner />
         <Outlet />
       </main>
       <nav className="tab-bar">
@@ -68,6 +71,28 @@ function TabLayout() {
           </NavLink>
         )}
       </nav>
+    </div>
+  );
+}
+
+function SyncBanner() {
+  const error = useSyncError();
+  const [busy, setBusy] = useState(false);
+  if (!error) return null;
+  const retry = () => {
+    setBusy(true);
+    pull()
+      .catch(() => {})
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="sync-banner" role="alert">
+      <span>
+        <strong>Couldn’t load walls from the server.</strong> {error}
+      </span>
+      <button type="button" className="btn small" disabled={busy} onClick={retry}>
+        {busy ? 'Retrying…' : 'Retry'}
+      </button>
     </div>
   );
 }

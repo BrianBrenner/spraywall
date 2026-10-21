@@ -580,6 +580,26 @@ h1 .badge,
   width: auto;
 }
 
+.sync-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px auto 0;
+  max-width: calc(var(--page) - 40px);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 1020px) {
+  .sync-banner {
+    margin: 12px 20px 0;
+  }
+}
+
 .empty {
   padding: 48px 16px;
   text-align: center;

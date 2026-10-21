@@ -1,6 +1,7 @@
 import type { InferenceSession } from 'onnxruntime-web';
 import type { Hold, HoldShape } from '../types';
 import { shapeBox } from './geometry';
+import { importFresh } from './appUpdate';
 import { loadImage, makeCanvas } from './image';
 import { bestTile, encode, lumaGrid, makeTile, outlineAtPoint, outlineBoxes, planTiles, preprocess, SAM_SIZE, type Embedding, type Tile } from './samCore';
 
@@ -10,7 +11,7 @@ let sessions: Promise<{ encoder: InferenceSession; decoder: InferenceSession; Te
 
 function getSam() {
   sessions ??= (async () => {
-    const ort = await import('onnxruntime-web/webgpu');
+    const ort = await importFresh(() => import('onnxruntime-web/webgpu'));
     ort.env.wasm.numThreads = 1;
     const load = async (name: string) => {
       const r = await fetch(base + name);
