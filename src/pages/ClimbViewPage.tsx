@@ -83,7 +83,7 @@ export function ClimbViewPage() {
     ...(perms.isOwner
       ? [
           {
-            label: climb.benchmark ? 'Remove benchmark' : 'Mark as benchmark',
+            label: climb.benchmark ? 'Remove from classics' : 'Mark as classic',
             icon: 'star' as const,
             run: () => void updateClimb(climb.id, { benchmark: !climb.benchmark }).catch((e) => alert(e.message)),
           },

@@ -58,14 +58,14 @@ export function ClimbRules({ climb, catalog, full }: { climb: Climb; catalog: Ca
   );
 }
 
-/** Benchmark star and descriptive tags. */
+/** Classic star (stored as `benchmark`) and descriptive tags. */
 export function ClimbMeta({ climb, catalog }: { climb: Climb; catalog: Catalog }) {
   if (!climb.benchmark && !climb.tagIds.some((id) => catalog.tag(id))) return null;
   return (
     <div className="climb-meta">
       {climb.benchmark && (
         <span className="badge star">
-          <Icon name="star" size={12} fill="currentColor" /> Benchmark
+          <Icon name="star" size={12} fill="currentColor" /> Classic
         </span>
       )}
       {climb.tagIds.map((id) => {

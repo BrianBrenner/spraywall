@@ -300,7 +300,7 @@ export function WallPage() {
                 aria-pressed={filters.benchmarksOnly}
                 onClick={() => set({ benchmarksOnly: !filters.benchmarksOnly })}
               >
-                <Icon name="star" size={14} fill="currentColor" /> Benchmarks
+                <Icon name="star" size={14} fill="currentColor" /> Classics
               </button>
               {catalog.tags.map((t) => {
                 const on = filters.tagIds.includes(t.id);

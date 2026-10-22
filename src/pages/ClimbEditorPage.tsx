@@ -204,8 +204,8 @@ function ClimbEditor({ catalog, climb, version }: { catalog: Catalog; climb?: Cl
           {isOwner && (
             <label className="check">
               <input type="checkbox" checked={benchmark} onChange={(e) => setBenchmark(e.target.checked)} />
-              Benchmark
-              <span className="muted small">a reference climb for its grade</span>
+              Classic
+              <span className="muted small">a wall favourite and reference for its grade</span>
             </label>
           )}
           <fieldset>

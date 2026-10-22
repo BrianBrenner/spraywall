@@ -41,7 +41,7 @@ Without a server the app is local-only: everything stays on one device. With the
 | Browse walls, climbs, lists | ✓ | ✓ | ✓ |
 | Set climbs; edit/delete their own | | ✓ | ✓ |
 | Tick (grade opinion, 1–3 stars, note) | | ✓ | ✓ |
-| Walls, photos, holds, lists, benchmarks, grades/foot rules/tags | | | ✓ |
+| Walls, photos, holds, lists, classics, grades/foot rules/tags | | | ✓ |
 | Invite code, remove members, any climb | | | ✓ |
 
 Friends make an account (name, email, password) with the **invite code**; the Cognito pre sign-up hook rejects anything else and confirms valid sign-ups on the spot. The owner is whoever signs up with the owner email given at deploy time. Access rules live in `infra/lambda/core.ts` (tested in `core.test.ts`).
